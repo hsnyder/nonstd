@@ -1,3 +1,10 @@
+/*
+	Harris M. Snyder, 2023
+	This is free and unencumbered software released into the public domain.
+
+	nonstd_base.h is part of 'nonstd', my attempt to supplement the C 
+	standard library. See the comments in `nonstd.h` for an overview.
+*/
 #ifndef NONSTD_BASE_H
 #define NONSTD_BASE_H
 
@@ -228,6 +235,7 @@ NONSTD_BASE_API  void * xrealloc(void *p, i64 bytes);
 
 NONSTD_BASE_API  i64 get_total_mem_bytes (void);  
 // return total machine memory size in bytes
+
 
 /*
 	Arena object allows you to allocate a bunch of stuff and free it

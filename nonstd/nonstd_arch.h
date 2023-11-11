@@ -1,3 +1,10 @@
+/*
+	Harris M. Snyder, 2023
+	This is free and unencumbered software released into the public domain.
+
+	nonstd_arch.h is part of 'nonstd', my attempt to supplement the C 
+	standard library. See the comments in `nonstd.h` for an overview.
+*/
 #ifndef NONSTD_ARCH_H
 #define NONSTD_ARCH_H
 
@@ -65,7 +72,9 @@ NONSTD_ARCH_API uint64_t read_os_timer(void);
    ============================================================================
 */
 
-
+/*
+	Spin-locking ticket-taking mutex.
+*/
 typedef struct {
 	uint32_t ticket;
 	uint32_t serving;
@@ -73,6 +82,7 @@ typedef struct {
 
 NONSTD_ARCH_API void ticket_mutex_lock(TicketMutex *m);    
 NONSTD_ARCH_API void ticket_mutex_unlock(TicketMutex *m);
+
 
 /*
 	"once barrier".. useful if you need some initialization code to be called exactly once.

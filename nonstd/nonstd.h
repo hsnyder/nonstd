@@ -29,6 +29,9 @@
 	a single file. To use them, copy the .h files into your project and 
 	define NONSTD_IMPLEMENTATION in exactly one .c file, immediately before 
 	you include nonstd.h.
+
+	You can find the documentation for each sub-library in the header portion
+	of each file. 
 */
 
 #ifndef NONSTD_H
