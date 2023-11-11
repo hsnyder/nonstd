@@ -31,7 +31,7 @@ I divide things into multiple files only when I've carefully thought about it an
 
 I'd like to support x86-64, 64-bit arm, and ppc64le.
 In practice, x86-64 is the best supported at the moment. 
-Other architectures aren't currently a priority.
+Architectures other than those listed aren't currently a priority.
 
 I try to support as many OSes as possible. 
 In practice I test Linux the most often, and I test FreeBSD, Windows, and Mac OS occasionally.
