@@ -117,7 +117,6 @@ NONSTD_ARCH_API void queue_pop_commit(uint32_t *q);
 NONSTD_ARCH_API int  queue_mpop(uint32_t *q, int exp, uint32_t *save);
 NONSTD_ARCH_API int  queue_mpop_commit(uint32_t *q, uint32_t save);
 
-
 #endif
 /* 
    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -135,12 +134,15 @@ NONSTD_ARCH_API int  queue_mpop_commit(uint32_t *q, uint32_t save);
 #ifdef NONSTD_ARCH_IMPLEMENTATION
 
 
+// Most architectures have special instructions which hint to the CPU that we're in a spin-lock loop.
 #ifdef __x86_64__
-// on x86, the 'pause' instruction informs the CPU that it is in a spin-lock, which allows it
-// to make the appropriate decisions with regard to speculative execution, etc.
-#define PAUSE()	__asm __volatile ("pause"); 
+#define SPIN_LOOP_HINT()  __asm __volatile ("pause"); 
 #else
-#define PAUSE() 
+#ifdef __arm__
+#define SPIN_LOOP_HINT()  __asm __volatile ("yield"); 
+#else
+#define SPIN_LOOP_HINT() 
+#endif
 #endif
 
 NONSTD_ARCH_API void 
@@ -148,7 +150,7 @@ ticket_mutex_lock(TicketMutex *m)
 {
 	uint32_t my_ticket = __atomic_fetch_add(&m->ticket, 1, __ATOMIC_RELAXED);
 	while (my_ticket != __atomic_load_n(&m->serving, __ATOMIC_ACQUIRE)) {
-		PAUSE();
+		SPIN_LOOP_HINT();
 	}
 }
 
@@ -168,7 +170,7 @@ once_enter(int *b)
 	if (got_lock) return 1;
 
 	while (2 != __atomic_load_n(b, __ATOMIC_SEQ_CST)) {
-		PAUSE();
+		SPIN_LOOP_HINT();
 	};
 	return 0;
 }
@@ -231,7 +233,6 @@ queue_mpop_commit(uint32_t *q, uint32_t save)
 {
 	return __atomic_compare_exchange_n(q, &save, save+0x10000, 0, __ATOMIC_RELEASE, __ATOMIC_RELAXED);
 }
-
 
 
 /* 
