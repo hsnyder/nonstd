@@ -123,6 +123,41 @@ NONSTD_ARCH_API int  queue_mpop_commit(uint32_t *q, uint32_t save);
 NONSTD_ARCH_API void semaphore_wait(int32_t *sem);
 NONSTD_ARCH_API void semaphore_post(int32_t *sem);
 
+/*
+	Blocking concurrent queue (multi-producer, multi-consumer)
+
+	The memory for the acutal queue entries is externally managed, like the 
+	above queue. The number of slots must be a power of 2.
+
+	This can't be zero-initialized, but it can be STATICALLY initialized.
+	The requirements are a bit complicated, so it's best to just use the 
+	convenience macro BLOCKING_CONCURRENT_QUEUE_INITIALIZER, which you just
+	give it the exponent - the queue has 2^n slots where n is the exponent
+	that you provide.
+
+	But if you want to know, the initialization requirements are:
+	- set exp to the exponent (2^n) indicating how many slots exist.
+	- set procucer slots to 2^n
+	- set access_semaphore to 1
+*/
+
+typedef struct {
+	int exp;
+	int32_t producer_slots;
+	int32_t consumer_slots;
+	int32_t access_semaphore;
+	uint32_t q;
+} BlockingConcurrentQueue;
+
+#define BLOCKING_CONCURRENT_QUEUE_INITIALIZER(exp) \
+	(BlockingConcurrentQueue){.exp=exp, .producer_slots=(1<<exp), .access_semaphore=1}
+
+NONSTD_ARCH_API int  blocking_queue_push(BlockingConcurrentQueue *q);
+NONSTD_ARCH_API void blocking_queue_push_commit(BlockingConcurrentQueue *q);
+
+NONSTD_ARCH_API int  blocking_queue_pop(BlockingConcurrentQueue *q);
+NONSTD_ARCH_API void blocking_queue_pop_commit(BlockingConcurrentQueue *q);
+
 #endif
 /* 
    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -295,6 +330,46 @@ semaphore_post(int32_t *sem)
 {
 	int32_t v = __atomic_fetch_add(sem, 1, __ATOMIC_RELEASE);
 	if (v < 0) futex_wake_one(sem);
+}
+
+
+
+
+
+NONSTD_ARCH_API int  
+blocking_queue_push(BlockingConcurrentQueue *q)
+{
+	semaphore_wait(q->producer_slots);
+	semaphore_wait(q->access_semaphore);
+	int i = queue_push(q->q, q->exp);
+	assert(i >= 0);
+	return i;
+}
+
+NONSTD_ARCH_API void 
+blocking_queue_push_commit(BlockingConcurrentQueue *q)
+{
+	queue_push_commit(q->q);
+	semaphore_post(q->access_semaphore);
+	semaphore_post(q->consumer_slots);
+}
+
+NONSTD_ARCH_API int  
+blocking_queue_pop(BlockingConcurrentQueue *q)
+{
+	semaphore_wait(q->consumer_slots);
+	semaphore_wait(q->access_semaphore);
+	int i = queue_pop(q->q, q->exp);
+	assert(i >= 0);
+	return i;
+}
+
+NONSTD_ARCH_API void 
+blocking_queue_pop_commit(BlockingConcurrentQueue *q)
+{
+	queue_pop_commit(q->q);
+	semaphore_post(q->access_semaphore);
+	semaphore_post(q->producer_slots);
 }
 
 
