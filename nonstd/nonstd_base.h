@@ -46,16 +46,12 @@ typedef uint64_t u64 ;
 #ifndef assert
 #  ifdef DISABLE_ASSERTIONS
 #    define assert(c)
-#  else
-#    if defined(_MSC_VER)
-#      define assert(c) if(!(c)){__debugbreak();}
-#    else
-#      if defined(__GNUC__) || defined(__clang__)
-#        define assert(c) if(!(c)){__builtin_trap();}
-#      else 
-#        define assert(c) if(!(c)){*(volatile int*)0=0;}
-#      endif 
-#    endif
+#  elif defined(_MSC_VER)
+#    define assert(c) if(!(c)){__debugbreak();}
+#  elif defined(__GNUC__) || defined(__clang__)
+#    define assert(c) if(!(c)){__builtin_trap();}
+#  else 
+#    define assert(c) if(!(c)){*(volatile int*)0=0;}
 #  endif
 #endif
 

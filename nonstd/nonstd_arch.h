@@ -29,12 +29,12 @@
 static uint64_t
 read_cpu_timer(void) 
 {
-#if defined(__x86_64__)
+#if   defined(__x86_64__)
 	return __builtin_ia32_rdtsc(); 
-#else 
-#if defined (__aarch64__)
+#elif defined (__aarch64__)
 	return __builtin_readcyclecounter();
-#endif
+#else
+	return 0;
 #endif 
 }
 
@@ -117,6 +117,12 @@ NONSTD_ARCH_API void queue_pop_commit(uint32_t *q);
 NONSTD_ARCH_API int  queue_mpop(uint32_t *q, int exp, uint32_t *save);
 NONSTD_ARCH_API int  queue_mpop_commit(uint32_t *q, uint32_t save);
 
+/*
+	Unfair blocking semaphore.
+*/
+NONSTD_ARCH_API void semaphore_wait(int32_t *sem);
+NONSTD_ARCH_API void semaphore_post(int32_t *sem);
+
 #endif
 /* 
    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -135,14 +141,12 @@ NONSTD_ARCH_API int  queue_mpop_commit(uint32_t *q, uint32_t save);
 
 
 // Most architectures have special instructions which hint to the CPU that we're in a spin-lock loop.
-#ifdef __x86_64__
+#if   defined(__x86_64__)
 #define SPIN_LOOP_HINT()  __asm __volatile ("pause"); 
-#else
-#ifdef __arm__
+#elif defined(__arm__)
 #define SPIN_LOOP_HINT()  __asm __volatile ("yield"); 
 #else
 #define SPIN_LOOP_HINT() 
-#endif
 #endif
 
 NONSTD_ARCH_API void 
@@ -232,6 +236,65 @@ NONSTD_ARCH_API int
 queue_mpop_commit(uint32_t *q, uint32_t save)
 {
 	return __atomic_compare_exchange_n(q, &save, save+0x10000, 0, __ATOMIC_RELEASE, __ATOMIC_RELAXED);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// FUTEXES are highly os-specifc, so they get their own section
+//
+#if defined(__linux__) 
+// LINUX
+#include <linux/futex.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+static void futex_wait(int32_t *f, int32_t expected) { sycall(SYS_futex, f, FUTEX_WAIT, expected, 0, 0, 0); }
+static void futex_wake_one(int32_t *f) { syscall(SYS_futex, f, FUTEX_WAKE, 1, 0, 0, 0); }
+static void futex_wake_all(int32_t *f) { syscall(SYS_futex, f, FUTEX_WAKE, INT_MAX, 0, 0, 0); }
+#elif defined(__OPENBSD__) 
+// OPENBSD
+#include <sys/futex.h>
+static void futex_wait(int32_t *f, int32_t expected) { futex(f, FUTEX_WAIT, expected, 0, 0); }
+static void futex_wake_one(int32_t *f) { futex(f, FUTEX_WAKE, 1, 0, 0); }
+static void futex_wake_all(int32_t *f) { futex(f, FUTEX_WAKE, INT_MAX, 0, 0); }
+#elif defined(__FreeBSD__) 
+// FREEBSD
+#include <sys/types.h>
+#include <sys/umtx.h>
+static void futex_wait(int32_t *f, int32_t expected) { _umtx_op(f, UMTX_OP_WAIT_UINT, expected, 0, 0); }
+static void futex_wake_one(int32_t *f) { _umtx_op(f, UMTX_OP_WAKE, 1, 0, 0); }
+static void futex_wake_all(int32_t *f) { _umtx_op(f, UMTX_OP_WAKE, INT_MAX, 0, 0); }
+#elif defined (_WIN32) 
+// WINDOWS
+#ifdef _MSC_VER
+#  pragma comment(lib, "ntdll.lib")
+#endif
+__declspec(dllimport) long __stdcall RtlWaitOnAddress(void *, void *, size_t, void *);
+__declspec(dllimport) long __stdcall RtlWakeAddressAll(void *);
+__declspec(dllimport) long __stdcall RtlWakeAddressSingle(void *);
+static void futex_wait(int32_t *f, int32_t expected) { RtlWaitOnAddress(f, &expected, sizeof(*f), 0); }
+static void futex_wake_one(int32_t *f) { RtlWakeAddressSingle(f); }
+static void futex_wake_all(int32_t *f) { RtlWakeAddressAll(f); }
+#else 
+// UNSUPPORTED PLATFORM 
+// no-op (hopefully the use case will fall back on a spin lock)
+static void futex_wait(int32_t *f, int32_t expected) { SPIN_LOOP_HINT(); }
+static void futex_wake_one(int32_t *f) { }
+static void futex_wake_all(int32_t *f) { }
+#endif
+
+
+NONSTD_ARCH_API void 
+semaphore_wait(int32_t *sem)
+{
+	int32_t v =  __atomic_sub_fetch(sem, 1, __ATOMIC_RELAXED);
+	while ((v = __atomic_load_n(sem, __ATOMIC_ACQUIRE)) < 0)
+		futex_wait(sem, v);
+}
+
+NONSTD_ARCH_API void 
+semaphore_post(int32_t *sem)
+{
+	int32_t v = __atomic_fetch_add(sem, 1, __ATOMIC_RELEASE);
+	if (v < 0) futex_wake_one(sem);
 }
 
 
