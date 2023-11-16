@@ -309,7 +309,7 @@ typedef struct {
 } AllocationHeader;
 _Static_assert(sizeof(AllocationHeader) == TALLOC_ALIGN, "TALLOC_ALIGN value or size of AllocationHeader is wrong");
 
-AllocationHeader * arena_foreach(Arena *a, i64 *state);
+NONSTD_BASE_API  AllocationHeader * arena_foreach(Arena *a, i64 *state);
 
 NONSTD_BASE_API  void print_allocation_header(AllocationHeader* x) ;
 

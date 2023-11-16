@@ -276,12 +276,13 @@ queue_mpop_commit(uint32_t *q, uint32_t save)
 //////////////////////////////////////////////////////////////////////////
 // FUTEXES are highly os-specifc, so they get their own section
 //
+#include <limits.h>
 #if defined(__linux__) 
 // LINUX
 #include <linux/futex.h>
 #include <sys/syscall.h>
 #include <unistd.h>
-static void futex_wait(int32_t *f, int32_t expected) { sycall(SYS_futex, f, FUTEX_WAIT, expected, 0, 0, 0); }
+static void futex_wait(int32_t *f, int32_t expected) { syscall(SYS_futex, f, FUTEX_WAIT, expected, 0, 0, 0); }
 static void futex_wake_one(int32_t *f) { syscall(SYS_futex, f, FUTEX_WAKE, 1, 0, 0, 0); }
 static void futex_wake_all(int32_t *f) { syscall(SYS_futex, f, FUTEX_WAKE, INT_MAX, 0, 0, 0); }
 #elif defined(__OPENBSD__) 
@@ -320,28 +321,43 @@ static void futex_wake_all(int32_t *f) { }
 NONSTD_ARCH_API void 
 semaphore_wait(int32_t *sem)
 {
-	int32_t v =  __atomic_sub_fetch(sem, 1, __ATOMIC_RELAXED);
-	while ((v = __atomic_load_n(sem, __ATOMIC_ACQUIRE)) < 0)
-		futex_wait(sem, v);
+	int32_t v = 1;
+	while(!__atomic_compare_exchange_n(sem, &v, v-1, 0, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) {
+		if(v == 0) {
+			futex_wait(sem, v);
+			v = 1;
+		}
+	}
 }
 
 NONSTD_ARCH_API void 
 semaphore_post(int32_t *sem)
 {
 	int32_t v = __atomic_fetch_add(sem, 1, __ATOMIC_RELEASE);
-	if (v < 0) futex_wake_one(sem);
+	if (v == 0) futex_wake_one(sem);
 }
 
 
 
+#ifndef assert
+#  ifdef DISABLE_ASSERTIONS
+#    define assert(c)
+#  elif defined(_MSC_VER)
+#    define assert(c) if(!(c)){__debugbreak();}
+#  elif defined(__GNUC__) || defined(__clang__)
+#    define assert(c) if(!(c)){__builtin_trap();}
+#  else 
+#    define assert(c) if(!(c)){*(volatile int*)0=0;}
+#  endif
+#endif
 
 
 NONSTD_ARCH_API int  
 blocking_queue_push(BlockingConcurrentQueue *q)
 {
-	semaphore_wait(q->producer_slots);
-	semaphore_wait(q->access_semaphore);
-	int i = queue_push(q->q, q->exp);
+	semaphore_wait(&q->producer_slots);
+	semaphore_wait(&q->access_semaphore);
+	int i = queue_push(&q->q, q->exp);
 	assert(i >= 0);
 	return i;
 }
@@ -349,17 +365,17 @@ blocking_queue_push(BlockingConcurrentQueue *q)
 NONSTD_ARCH_API void 
 blocking_queue_push_commit(BlockingConcurrentQueue *q)
 {
-	queue_push_commit(q->q);
-	semaphore_post(q->access_semaphore);
-	semaphore_post(q->consumer_slots);
+	queue_push_commit(&q->q);
+	semaphore_post(&q->access_semaphore);
+	semaphore_post(&q->consumer_slots);
 }
 
 NONSTD_ARCH_API int  
 blocking_queue_pop(BlockingConcurrentQueue *q)
 {
-	semaphore_wait(q->consumer_slots);
-	semaphore_wait(q->access_semaphore);
-	int i = queue_pop(q->q, q->exp);
+	semaphore_wait(&q->consumer_slots);
+	semaphore_wait(&q->access_semaphore);
+	int i = queue_pop(&q->q, q->exp);
 	assert(i >= 0);
 	return i;
 }
@@ -367,9 +383,9 @@ blocking_queue_pop(BlockingConcurrentQueue *q)
 NONSTD_ARCH_API void 
 blocking_queue_pop_commit(BlockingConcurrentQueue *q)
 {
-	queue_pop_commit(q->q);
-	semaphore_post(q->access_semaphore);
-	semaphore_post(q->producer_slots);
+	queue_pop_commit(&q->q);
+	semaphore_post(&q->access_semaphore);
+	semaphore_post(&q->producer_slots);
 }
 
 
