@@ -125,6 +125,8 @@ NONSTD_ARCH_API int  queue_mpop_commit(uint32_t *q, uint32_t save);
 	The implementation isn't optimal: semaphore_post makes a system call even
 	if there are no waiters, but since only one waiter is woken each post, 
 	there's no thundering herd effect.
+
+	Note: the maximum supported value for `sem` is INT32_MAX, not UINT32_MAX.
 */
 NONSTD_ARCH_API void semaphore_wait(uint32_t *sem);
 NONSTD_ARCH_API void semaphore_post(uint32_t *sem);
