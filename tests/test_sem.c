@@ -8,7 +8,7 @@
 #include <unistd.h>
 
 u64 state = 0xdeadbeefdeadbeef;
-int32_t sem = 1;
+uint32_t sem = 1;
 
 void *tfn (void *nothing)
 {

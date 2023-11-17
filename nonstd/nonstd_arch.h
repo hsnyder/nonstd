@@ -103,7 +103,7 @@ NONSTD_ARCH_API void once_commit(int *b);
 // Call this once you're done doing init work.
 
 /*
-	Lock free concurrent spin-lock queue.
+	Lock free concurrent queue.
 	Credit to Chris Wellons for the idea: 
         https://nullprogram.com/blog/2022/05/14/ (public domain)
 	Operation fully explained in the above link.
@@ -119,9 +119,15 @@ NONSTD_ARCH_API int  queue_mpop_commit(uint32_t *q, uint32_t save);
 
 /*
 	Unfair blocking semaphore.
+
+	Uses futexes on supported operating systems to put threads to sleep until 
+	the resource is available (uses spin-locking if futexes aren't availble).
+	The implementation isn't optimal: semaphore_post makes a system call even
+	if there are no waiters, but since only one waiter is woken each post, 
+	there's no thundering herd effect.
 */
-NONSTD_ARCH_API void semaphore_wait(int32_t *sem);
-NONSTD_ARCH_API void semaphore_post(int32_t *sem);
+NONSTD_ARCH_API void semaphore_wait(uint32_t *sem);
+NONSTD_ARCH_API void semaphore_post(uint32_t *sem);
 
 /*
 	Blocking concurrent queue (multi-producer, multi-consumer)
@@ -137,20 +143,20 @@ NONSTD_ARCH_API void semaphore_post(int32_t *sem);
 
 	But if you want to know, the initialization requirements are:
 	- set exp to the exponent (2^n) indicating how many slots exist.
-	- set procucer slots to 2^n
+	- set procucer slots to 2^n-1
 	- set access_semaphore to 1
 */
 
 typedef struct {
 	int exp;
-	int32_t producer_slots;
-	int32_t consumer_slots;
-	int32_t access_semaphore;
+	uint32_t producer_slots;
+	uint32_t consumer_slots;
+	uint32_t access_semaphore;
 	uint32_t q;
 } BlockingConcurrentQueue;
 
-#define BLOCKING_CONCURRENT_QUEUE_INITIALIZER(exp) \
-	(BlockingConcurrentQueue){.exp=exp, .producer_slots=(1<<exp), .access_semaphore=1}
+#define BLOCKING_CONCURRENT_QUEUE_INITIALIZER(exponent) \
+	(BlockingConcurrentQueue){.exp=exponent, .producer_slots=((1<<exponent)-1), .access_semaphore=1}
 
 NONSTD_ARCH_API int  blocking_queue_push(BlockingConcurrentQueue *q);
 NONSTD_ARCH_API void blocking_queue_push_commit(BlockingConcurrentQueue *q);
@@ -282,22 +288,22 @@ queue_mpop_commit(uint32_t *q, uint32_t save)
 #include <linux/futex.h>
 #include <sys/syscall.h>
 #include <unistd.h>
-static void futex_wait(int32_t *f, int32_t expected) { syscall(SYS_futex, f, FUTEX_WAIT, expected, 0, 0, 0); }
-static void futex_wake_one(int32_t *f) { syscall(SYS_futex, f, FUTEX_WAKE, 1, 0, 0, 0); }
-static void futex_wake_all(int32_t *f) { syscall(SYS_futex, f, FUTEX_WAKE, INT_MAX, 0, 0, 0); }
+static void futex_wait(uint32_t *f, uint32_t expected) { syscall(SYS_futex, f, FUTEX_WAIT, expected, 0, 0, 0); }
+static void futex_wake_one(uint32_t *f) { syscall(SYS_futex, f, FUTEX_WAKE, 1, 0, 0, 0); }
+static void futex_wake_all(uint32_t *f) { syscall(SYS_futex, f, FUTEX_WAKE, INT_MAX, 0, 0, 0); }
 #elif defined(__OPENBSD__) 
 // OPENBSD
 #include <sys/futex.h>
-static void futex_wait(int32_t *f, int32_t expected) { futex(f, FUTEX_WAIT, expected, 0, 0); }
-static void futex_wake_one(int32_t *f) { futex(f, FUTEX_WAKE, 1, 0, 0); }
-static void futex_wake_all(int32_t *f) { futex(f, FUTEX_WAKE, INT_MAX, 0, 0); }
+static void futex_wait(uint32_t *f, uint32_t expected) { futex(f, FUTEX_WAIT, expected, 0, 0); }
+static void futex_wake_one(uint32_t *f) { futex(f, FUTEX_WAKE, 1, 0, 0); }
+static void futex_wake_all(uint32_t *f) { futex(f, FUTEX_WAKE, INT_MAX, 0, 0); }
 #elif defined(__FreeBSD__) 
 // FREEBSD
 #include <sys/types.h>
 #include <sys/umtx.h>
-static void futex_wait(int32_t *f, int32_t expected) { _umtx_op(f, UMTX_OP_WAIT_UINT, expected, 0, 0); }
-static void futex_wake_one(int32_t *f) { _umtx_op(f, UMTX_OP_WAKE, 1, 0, 0); }
-static void futex_wake_all(int32_t *f) { _umtx_op(f, UMTX_OP_WAKE, INT_MAX, 0, 0); }
+static void futex_wait(uint32_t *f, uint32_t expected) { _umtx_op(f, UMTX_OP_WAIT_UINT, expected, 0, 0); }
+static void futex_wake_one(uint32_t *f) { _umtx_op(f, UMTX_OP_WAKE, 1, 0, 0); }
+static void futex_wake_all(uint32_t *f) { _umtx_op(f, UMTX_OP_WAKE, INT_MAX, 0, 0); }
 #elif defined (_WIN32) 
 // WINDOWS
 #ifdef _MSC_VER
@@ -306,37 +312,16 @@ static void futex_wake_all(int32_t *f) { _umtx_op(f, UMTX_OP_WAKE, INT_MAX, 0, 0
 __declspec(dllimport) long __stdcall RtlWaitOnAddress(void *, void *, size_t, void *);
 __declspec(dllimport) long __stdcall RtlWakeAddressAll(void *);
 __declspec(dllimport) long __stdcall RtlWakeAddressSingle(void *);
-static void futex_wait(int32_t *f, int32_t expected) { RtlWaitOnAddress(f, &expected, sizeof(*f), 0); }
-static void futex_wake_one(int32_t *f) { RtlWakeAddressSingle(f); }
-static void futex_wake_all(int32_t *f) { RtlWakeAddressAll(f); }
+static void futex_wait(uint32_t *f, uint32_t expected) { RtlWaitOnAddress(f, &expected, sizeof(*f), 0); }
+static void futex_wake_one(uint32_t *f) { RtlWakeAddressSingle(f); }
+static void futex_wake_all(uint32_t *f) { RtlWakeAddressAll(f); }
 #else 
 // UNSUPPORTED PLATFORM 
 // no-op (hopefully the use case will fall back on a spin lock)
-static void futex_wait(int32_t *f, int32_t expected) { SPIN_LOOP_HINT(); }
-static void futex_wake_one(int32_t *f) { }
-static void futex_wake_all(int32_t *f) { }
+static void futex_wait(uint32_t *f, uint32_t expected) { SPIN_LOOP_HINT(); }
+static void futex_wake_one(uint32_t *f) { }
+static void futex_wake_all(uint32_t *f) { }
 #endif
-
-
-NONSTD_ARCH_API void 
-semaphore_wait(int32_t *sem)
-{
-	int32_t v = 1;
-	while(!__atomic_compare_exchange_n(sem, &v, v-1, 0, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) {
-		if(v == 0) {
-			futex_wait(sem, v);
-			v = 1;
-		}
-	}
-}
-
-NONSTD_ARCH_API void 
-semaphore_post(int32_t *sem)
-{
-	int32_t v = __atomic_fetch_add(sem, 1, __ATOMIC_RELEASE);
-	if (v == 0) futex_wake_one(sem);
-}
-
 
 
 #ifndef assert
@@ -351,6 +336,29 @@ semaphore_post(int32_t *sem)
 #  endif
 #endif
 
+
+
+NONSTD_ARCH_API void 
+semaphore_wait(uint32_t *sem)
+{
+	uint32_t v = 1;
+	while(!__atomic_compare_exchange_n(sem, &v, v-1, 0, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) {
+		if(v == 0) {
+			futex_wait(sem, v);
+			v = 1;
+		}
+	}
+}
+
+NONSTD_ARCH_API void 
+semaphore_post(uint32_t *sem)
+{
+	uint32_t v = __atomic_fetch_add(sem, 1, __ATOMIC_RELEASE);
+	assert(v < INT32_MAX);
+	//if (v == 0) futex_wake_one(sem); // <-- bug
+	//TODO(performance): no syscall if no waiters
+	futex_wake_one(sem);
+}
 
 NONSTD_ARCH_API int  
 blocking_queue_push(BlockingConcurrentQueue *q)
