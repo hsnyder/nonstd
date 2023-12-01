@@ -2,7 +2,7 @@
 	Harris M. Snyder, 2023
 	This is free and unencumbered software released into the public domain.
 
-	nonstd_base.h is part of 'nonstd', my attempt to supplement the C 
+	nonstd_base.h is part of 'nonstd': an attempt to supplement the C 
 	standard library. See the comments in `nonstd.h` for an overview.
 */
 #ifndef NONSTD_BASE_H
