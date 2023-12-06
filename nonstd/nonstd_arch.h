@@ -356,8 +356,11 @@ event_wait(uint32_t *event)
 {
 	// 1-bit set: there are waiters
 	// 2-bit set: the event has been posted
-	uint32_t v = __atomic_or_fetch(event, 0x1, __ATOMIC_ACQUIRE);
-	if (! (v & 0x2)) futex_wait(event, v);
+	while(1) {
+		uint32_t v = __atomic_or_fetch(event, 0x1, __ATOMIC_ACQUIRE);
+		if (v & 0x02) break;
+		futex_wait(event, v);
+	}
 }
 
 NONSTD_ARCH_API void 
