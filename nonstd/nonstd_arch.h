@@ -117,6 +117,18 @@ NONSTD_ARCH_API void queue_pop_commit(uint32_t *q);
 NONSTD_ARCH_API int  queue_mpop(uint32_t *q, int exp, uint32_t *save);
 NONSTD_ARCH_API int  queue_mpop_commit(uint32_t *q, uint32_t save);
 
+
+/*
+	Manual-reset event.
+	- No system call on post if no threads waiting.
+	- No system call on wait if event already posted.
+	- Reset does not wake sleepers, it's just a relaxed atomic store
+	  (so don't rely on reset for any type of syncrhonization).
+*/
+NONSTD_ARCH_API void event_wait(uint32_t *event);
+NONSTD_ARCH_API void event_post(uint32_t *event);
+NONSTD_ARCH_API void event_reset(uint32_t *event);
+
 /*
 	Unfair blocking semaphore.
 
@@ -338,6 +350,29 @@ static void futex_wake_all(uint32_t *f) { }
 #  endif
 #endif
 
+
+NONSTD_ARCH_API void 
+event_wait(uint32_t *event)
+{
+	// 1-bit set: there are waiters
+	// 2-bit set: the event has been posted
+	uint32_t v = __atomic_or_fetch(event, 0x1, __ATOMIC_ACQUIRE);
+	if (! (v & 0x2)) futex_wait(event, v);
+}
+
+NONSTD_ARCH_API void 
+event_post(uint32_t *event)
+{
+	uint32_t v = __atomic_fetch_or(event, 0x2, __ATOMIC_RELEASE);
+	if (v & 0x1) futex_wake_all(event);
+
+}
+
+NONSTD_ARCH_API void 
+event_reset(uint32_t *event)
+{
+	__atomic_store_n(event, 0, __ATOMIC_RELAXED);
+}
 
 
 NONSTD_ARCH_API void 
