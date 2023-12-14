@@ -296,6 +296,7 @@ NONSTD_BASE_API  i64  arena_checkpoint(Arena *a);
 NONSTD_BASE_API  void arena_rollback(Arena *a, i64 checkpoint);
 
 NONSTD_BASE_API  char* allocate_sprintf(Arena *a, char *fmt, ...);
+NONSTD_BASE_API  char* allocate_cstrdup(Arena *a, char *cstr);
 
 #define TALLOC_ALIGN 64
 #define TALLOC_HEADER_MAGIC 0xa110c8ed // "allocated :)"
@@ -1332,6 +1333,16 @@ allocate_sprintf(Arena *a, char *fmt, ...)
 	va_end(args1);
 	va_end(args2);
 	return mem;
+}
+
+NONSTD_BASE_API char* 
+allocate_cstrdup(Arena *a, char *cstr)
+{
+        if(!string) return 0;
+        int len = strlen(string);
+        char *mem = allocate(a, len+1);
+        memcpy(mem, string, len);
+        return mem;
 }
 
 NONSTD_BASE_API AllocationHeader * 
