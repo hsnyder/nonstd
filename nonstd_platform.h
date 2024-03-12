@@ -5,231 +5,192 @@
 	nonstd_base.h is part of 'nonstd': an attempt to supplement the C 
 	standard library. See the comments in `nonstd.h` for an overview.
 */
-#ifndef NONSTD_BASE_H
-#define NONSTD_BASE_H
+#ifndef NONSTD_PLATFORM_H
+#define NONSTD_PLATFORM_H
 
-#ifndef NONSTD_BASE_API
-#define NONSTD_BASE_API 
+#ifndef NONSTD_PLATFORM_API
+#define NONSTD_PLATFORM_API 
 #endif
 
 #include <stdint.h>
 #include <stddef.h>
 #include <setjmp.h>
 
-// This file has an optional dependency on nonstd_arch.h
-// If nonstd_arch is included first, then features from that file are used
-// to make certain features thread-safe. If nonstd_arch is not being used,
-// then the memory Arenas are not thread-safe and these dummy functions are
-// used instead
-#ifndef NONSTD_ARCH_H
-typedef struct {int _;} TicketMutex;
-static void ticket_mutex_lock(TicketMutex *m){(void)m;}
-static void ticket_mutex_unlock(TicketMutex *m){(void)m;}
-#endif
-
 /* 
    ============================================================================
-		TYPEDEFS AND ASSORTED CONVENIENCE MACROS/FUNCTIONS
+		TIMING AND PROFILING 
    ============================================================================
 */
-typedef int8_t i8  ;
-typedef int16_t i16 ;
-typedef int32_t i32 ;
-typedef int64_t i64 ;
-#define I64(x) ((i64)(x))
-
-typedef uint8_t u8  ;
-typedef uint16_t u16 ;
-typedef uint32_t u32 ;
-typedef uint64_t u64 ;
-
-#ifndef assert
-#  ifdef DISABLE_ASSERTIONS
-#    define assert(c)
-#  elif defined(_MSC_VER)
-#    define assert(c) if(!(c)){__debugbreak();}
-#  elif defined(__GNUC__) || defined(__clang__)
-#    define assert(c) if(!(c)){__builtin_trap();}
-#  else 
-#    define assert(c) if(!(c)){*(volatile int*)0=0;}
-#  endif
-#endif
-
-#define INVALID_CODE_PATH() assert(!"Invalid code path");
-
-#define ssizeof(x) ((i64)sizeof(x))
-#define COUNT_ARRAY(x) (ssizeof(x)/ssizeof(x[0]))
-
-#define MIN(a,b) ((a)>(b)?(b):(a))
-#define MAX(a,b) ((a)>(b)?(a):(b))
-
-#define CONCATENATE_(a,b) a ## b
-#define CONCATENATE(a,b) CONCATENATE_(a,b)
-
-#define KILOBYTES(n) (1024ll*n)
-#define MEGABYTES(n) (1024ll*KILOBYTES(n))
-#define GIGABYTES(n) (1024ll*MEGABYTES(n))
-
-// Macro hackery to allow overloading functions on number of arguments
-#define OVERLOAD_2(_1,_2,NAME,...) NAME
-#define OVERLOAD_3(_1,_2,_3,NAME,...) NAME
-#define OVERLOAD_4(_1,_2,_3,_4,NAME,...) NAME
-#define OVERLOAD_5(_1,_2,_3,_4,_5,NAME,...) NAME
-#define OVERLOAD_6(_1,_2,_3,_4,_5,_6,NAME,...) NAME
-
-#define MUL64_1(a)           ((i64)(a))
-#define MUL64_2(a,b)         ((i64)(a) * (i64)(b))
-#define MUL64_3(a,b,c)       ((i64)(a) * (i64)(b) * (i64)(c))
-#define MUL64_4(a,b,c,d)     ((i64)(a) * (i64)(b) * (i64)(c) * (i64)(d))
-#define MUL64_5(a,b,c,d,e)   ((i64)(a) * (i64)(b) * (i64)(c) * (i64)(d) * (i64)(e))
-#define MUL64_6(a,b,c,d,e,f) ((i64)(a) * (i64)(b) * (i64)(c) * (i64)(d) * (i64)(e) * (i64)(f))
-
-#define MUL64(...) OVERLOAD_6(__VA_ARGS__, MUL64_6, MUL64_5, MUL64_4, MUL64_3, MUL64_2, MUL64_1) (__VA_ARGS__)
-
-static i64 
-round_up (i64 value, i64 to)
-{
-	i64 mod = value%to;	
-	if(mod) return value+to-(value%to);
-	return value;
-}
-
-static i64 
-round_down (i64 value, i64 to)
-{
-	return (value/to)*to;
-}
-
-static int 
-partition (int N, int P, int i)
-// If partitioning N items into P partitions, this returns 
-// the number of items in the i-th partition (i from 0 to P-1)
-{
-	assert(i >= 0 && i < P);
-	assert(N >= 0);
-	assert(P >= 0);
-
-	int r = N % P;
-	int m = (N / P) + (r != 0);
-
-	return (r == 0 || i < r)  ?  m  :  m-1;
-}
-
-static i64 
-partition64 (i64 N, i64 P, i64 i)
-// If partitioning N items into P partitions, this returns 
-// the number of items in the i-th partition (i from 0 to P-1)
-{
-	assert(i >= 0 && i < P);
-	assert(N >= 0);
-	assert(P >= 0);
-
-	i64 r = N % P;
-	i64 m = (N / P) + (r != 0);
-
-	return (r == 0 || i < r)  ?  m  :  m-1;
-}
-
-
-
-/* 
-   ============================================================================
-		RANDOM NUMBERS
-   ============================================================================
-*/
-NONSTD_BASE_API uint32_t rand_pcg32 (uint64_t state[static 1]); 
-// Generate a random uint32, uniform distribution. 
-// Permuted congruential generator (32-bit)
-									       
-NONSTD_BASE_API float randn_pcg32 (uint64_t state[static 1]);
-// Generate a random float, normal distribution. 
-// Permuted congruential generator (32-bit)
-
-NONSTD_BASE_API float randp_pcg32 (uint64_t state[static 1], float lambda);
-// Generate a random float, poisson distribution. 
-// Permuted congruential generator (32-bit)
-
-
-
-/* 
-   ============================================================================
-		HASH TABLES AND OTHER DATA STRUCTURES
-   ============================================================================
-*/
-NONSTD_BASE_API int32_t msi_ht_lookup(uint64_t hash, int exp, int32_t idx);
-// MSI hash table, see https://nullprogram.com/blog/2022/08/08/
-// Compute the next candidate index. Initialize idx to the hash.
-
-NONSTD_BASE_API uint64_t hash_cstr_FNV1a(char *s, int len);
-// FNV-1a hash function (useful for strings)
-
-NONSTD_BASE_API uint64_t hash_i64(int64_t x);
-// Hashes an int64 with FNV-1a, as though it were a byte string
-
-NONSTD_BASE_API uint64_t hash_u64(uint64_t x);
-// Hashes a uint64 with FNV-1a, as though it were a byte string
-
-
-/* 
-   ============================================================================
-		SORTING 
-   ============================================================================
-*/
-typedef struct {
-	
-	int a;
-	int b;
-	int swap;
-
-	int private[2];
-
-} BubbleSort;
-
-NONSTD_BASE_API int bubblesort_step (BubbleSort *state, int N);
 
 /*
-	
-	Example test program:
-
-int main(void)
+	Very low-overhead high resolution timer.
+	The units aren't guaranteed to be any particular thing
+	(use cpu_time_to_sec() to convert a difference of times to seconds).
+*/
+static uint64_t
+read_cpu_timer(void) 
 {
-	float n[10];
-	u64 state = time(NULL);
-	for(int i = 0; i < 10; i++) n[i] = randn_pcg32(&state);
-
-	for(int i = 0; i < 10; i++) printf("%f\n",n[i]);
-	printf("\n\n");
-	
-	BubbleSort s = {0};
-	while(bubblesort_step(&s, 10)) {
-
-		s.swap = n[s.a] < n[s.b];
-
-		if(s.swap) {
-			float tmp = n[s.b];
-			n[s.b] = n[s.a];
-			n[s.a] = tmp;
-		} 
-	}
-
-	for(int i = 0; i < 10; i++) printf("%f\n",n[i]);
+#if   defined(__x86_64__)
+	return __builtin_ia32_rdtsc(); 
+#elif defined (__aarch64__)
+	return __builtin_readcyclecounter();
+#else
+	return 0;
+#endif 
 }
 
+
+/* 
+	Converts a difference of values from read_cpu_timer() to (approx) seconds. 
+	Will block for 100ms the first time it's called!!!
+*/
+NONSTD_PLATFORM_API double cpu_time_to_sec(uint64_t cpu_time_elapsed) ;
+
+/* 
+	Return wall-clock time in seconds. 
+	What point is defined as "zero" time is undefined,
+	so differences are meaningful but not an individual time. 
+	Uses cpu_time_to_sec, so be aware of the one time 100ms block.
+*/
+NONSTD_PLATFORM_API double get_wtime(void); 
+
+
+/*
+	Returns the frequency of the OS timer in counts per second
+*/
+NONSTD_PLATFORM_API uint64_t get_os_timer_freq(void);
+
+/*
+	Query the current OS time. Zero reference time is not guaranteed to be any particular thing
+*/
+NONSTD_PLATFORM_API uint64_t read_os_timer(void);
+
+
+
+/* 
+   ============================================================================
+		CONCURRENCY SUPPORT
+   ============================================================================
 */
 
+/*
+	Spin-locking ticket-taking mutex.
+*/
+typedef struct {
+	uint32_t ticket;
+	uint32_t serving;
+} TicketMutex;
+
+NONSTD_PLATFORM_API void ticket_mutex_lock(TicketMutex *m);    
+NONSTD_PLATFORM_API void ticket_mutex_unlock(TicketMutex *m);
+
+
+/*
+	"once barrier".. useful if you need some initialization code to be called exactly once.
+	usage is:
+
+	static int b = 0; // init to zero is important
+
+	if (once_enter(&b)) {
+		do_initialization_work();
+		once_commit(&b);
+	} 
+*/
+
+NONSTD_PLATFORM_API int once_enter(int *b); 
+// Returns true if you are the thread that needs to do the init work.
+
+NONSTD_PLATFORM_API void once_commit(int *b); 
+// Call this once you're done doing init work.
+
+/*
+	Lock free concurrent queue.
+	Credit to Chris Wellons for the idea: 
+        https://nullprogram.com/blog/2022/05/14/ (public domain)
+	Operation fully explained in the above link.
+*/
+NONSTD_PLATFORM_API int  queue_push(uint32_t *q, int exp);
+NONSTD_PLATFORM_API void queue_push_commit(uint32_t *q);
+
+NONSTD_PLATFORM_API int  queue_pop(uint32_t *q, int exp);
+NONSTD_PLATFORM_API void queue_pop_commit(uint32_t *q);
+
+NONSTD_PLATFORM_API int  queue_mpop(uint32_t *q, int exp, uint32_t *save);
+NONSTD_PLATFORM_API int  queue_mpop_commit(uint32_t *q, uint32_t save);
+
+
+/*
+	Manual-reset event.
+	- No system call on post if no threads waiting.
+	- No system call on wait if event already posted.
+	- Reset does not wake sleepers, it's just a relaxed atomic store
+	  (so don't rely on reset for any type of syncrhonization).
+*/
+NONSTD_PLATFORM_API void event_wait(uint32_t *event);
+NONSTD_PLATFORM_API void event_post(uint32_t *event);
+NONSTD_PLATFORM_API void event_reset(uint32_t *event);
+
+/*
+	Unfair blocking semaphore.
+
+	Uses futexes on supported operating systems to put threads to sleep until 
+	the resource is available (uses spin-locking if futexes aren't availble).
+	The implementation isn't optimal: semaphore_post makes a system call even
+	if there are no waiters, but since only one waiter is woken each post, 
+	there's no thundering herd effect.
+
+	Note: the maximum supported value for `sem` is INT32_MAX, not UINT32_MAX.
+*/
+NONSTD_PLATFORM_API void semaphore_wait(uint32_t *sem);
+NONSTD_PLATFORM_API void semaphore_post(uint32_t *sem);
+
+/*
+	Blocking concurrent queue (multi-producer, multi-consumer)
+
+	The memory for the acutal queue entries is externally managed, like the 
+	above queue. The number of slots must be a power of 2.
+
+	This can't be zero-initialized, but it can be STATICALLY initialized.
+	The requirements are a bit complicated, so it's best to just use the 
+	convenience macro BLOCKING_CONCURRENT_QUEUE_INITIALIZER, which you just
+	give it the exponent - the queue has 2^n slots where n is the exponent
+	that you provide.
+
+	But if you want to know, the initialization requirements are:
+	- set exp to the exponent (2^n) indicating how many slots exist.
+	- set procucer slots to 2^n-1
+	- set access_semaphore to 1
+*/
+
+typedef struct {
+	int exp;
+	uint32_t producer_slots;
+	uint32_t consumer_slots;
+	uint32_t access_semaphore;
+	uint32_t q;
+} BlockingConcurrentQueue;
+
+#define BLOCKING_CONCURRENT_QUEUE_INITIALIZER(exponent) \
+	(BlockingConcurrentQueue){.exp=exponent, .producer_slots=((1<<exponent)-1), .access_semaphore=1}
+
+NONSTD_PLATFORM_API int  blocking_queue_push(BlockingConcurrentQueue *q);
+NONSTD_PLATFORM_API void blocking_queue_push_commit(BlockingConcurrentQueue *q);
+
+NONSTD_PLATFORM_API int  blocking_queue_pop(BlockingConcurrentQueue *q);
+NONSTD_PLATFORM_API void blocking_queue_pop_commit(BlockingConcurrentQueue *q);
 
 /* 
    ============================================================================
 		MEMORY MANAGEMENT
    ============================================================================
 */
-NONSTD_BASE_API  void * xmalloc(i64 bytes);
+NONSTD_PLATFORM_API  void * xmalloc(i64 bytes);
 // calls malloc(), calls die() if malloc() fails
 
-NONSTD_BASE_API  void * xrealloc(void *p, i64 bytes);
+NONSTD_PLATFORM_API  void * xrealloc(void *p, i64 bytes);
 // calls realloc(), calls die() if realloc() fails
 
-NONSTD_BASE_API  i64 get_total_mem_bytes (void);  
+NONSTD_PLATFORM_API  i64 get_total_mem_bytes (void);  
 // return total machine memory size in bytes
 
 
@@ -266,37 +227,37 @@ typedef struct {
 	jmp_buf *oom_handler; // if you run out of memory, this will be longjmp'd. if null, then die() is called
 } Arena;
 
-NONSTD_BASE_API  void  arena_clear(Arena *a, int reclaim); // deletes everything in the arena but keeps the arena around
-NONSTD_BASE_API  void  arena_destroy(Arena *a); // deletes everything in the arena and destroys the arena
+NONSTD_PLATFORM_API  void  arena_clear(Arena *a, int reclaim); // deletes everything in the arena but keeps the arena around
+NONSTD_PLATFORM_API  void  arena_destroy(Arena *a); // deletes everything in the arena and destroys the arena
 
-NONSTD_BASE_API  int arena_dump_file(Arena *a, char * filename); // dump contents of arena to a file.
-NONSTD_BASE_API  i64 arena_dump(i64 bufsz, void *buf, Arena *a); // dump contents of arena to a supplied buffer, returns the required size.
-NONSTD_BASE_API  Arena  arena_load_file(char * filename, i64 sz_reserve_extra); // load contents of an arena from a file.
+NONSTD_PLATFORM_API  int arena_dump_file(Arena *a, char * filename); // dump contents of arena to a file.
+NONSTD_PLATFORM_API  i64 arena_dump(i64 bufsz, void *buf, Arena *a); // dump contents of arena to a supplied buffer, returns the required size.
+NONSTD_PLATFORM_API  Arena  arena_load_file(char * filename, i64 sz_reserve_extra); // load contents of an arena from a file.
 
-NONSTD_BASE_API  void* allocate(Arena *a, i64 sz); // allocate and zero some memory
-NONSTD_BASE_API  void* allocate_empty(Arena *a, i64 sz); // allocate some uninitialized memory
-NONSTD_BASE_API  void* allocate_named(Arena *a, i64 sz, char *name, int name_len); // allocate and assign a name
-NONSTD_BASE_API  void* allocate_empty_named(Arena *a, i64 sz, char *name, int name_len); // allocate and zero, and assign a name
+NONSTD_PLATFORM_API  void* allocate(Arena *a, i64 sz); // allocate and zero some memory
+NONSTD_PLATFORM_API  void* allocate_empty(Arena *a, i64 sz); // allocate some uninitialized memory
+NONSTD_PLATFORM_API  void* allocate_named(Arena *a, i64 sz, char *name, int name_len); // allocate and assign a name
+NONSTD_PLATFORM_API  void* allocate_empty_named(Arena *a, i64 sz, char *name, int name_len); // allocate and zero, and assign a name
 									//
-NONSTD_BASE_API  void* allocation_copy(Arena *a, void *src_data); // copies *src_data from another Arena to a
+NONSTD_PLATFORM_API  void* allocation_copy(Arena *a, void *src_data); // copies *src_data from another Arena to a
 
-NONSTD_BASE_API  void* allocation_lookup(Arena *a, char *name, int name_len); // finds an allocation by name
+NONSTD_PLATFORM_API  void* allocation_lookup(Arena *a, char *name, int name_len); // finds an allocation by name
 
-NONSTD_BASE_API  int allocation_check_name(void *p, char *name, int name_len); // check that a previous allocation has the specified name
+NONSTD_PLATFORM_API  int allocation_check_name(void *p, char *name, int name_len); // check that a previous allocation has the specified name
 
-NONSTD_BASE_API  i64 allocation_size(void *p); // gets size of an allocation that was allocated by a Arena
-NONSTD_BASE_API  i64 allocation_capacity(void *p); // gets capacity of an allocation that was allocated by a Arena (may be > size due to alignment padding)
+NONSTD_PLATFORM_API  i64 allocation_size(void *p); // gets size of an allocation that was allocated by a Arena
+NONSTD_PLATFORM_API  i64 allocation_capacity(void *p); // gets capacity of an allocation that was allocated by a Arena (may be > size due to alignment padding)
 
-NONSTD_BASE_API  void arena_mem_lock(Arena *a); // locks memory, preventing it from being swapped
-NONSTD_BASE_API  void arena_mem_unlock(Arena *a); // unlocks memory, allowing it to be swapped
+NONSTD_PLATFORM_API  void arena_mem_lock(Arena *a); // locks memory, preventing it from being swapped
+NONSTD_PLATFORM_API  void arena_mem_unlock(Arena *a); // unlocks memory, allowing it to be swapped
 				 
-NONSTD_BASE_API  i64 arena_get_used_memory(Arena *a); // gets the number of bytes in use by the arena
+NONSTD_PLATFORM_API  i64 arena_get_used_memory(Arena *a); // gets the number of bytes in use by the arena
                                      // exists only b/c python can't easily access the .used struct member
-NONSTD_BASE_API  i64  arena_checkpoint(Arena *a);
-NONSTD_BASE_API  void arena_rollback(Arena *a, i64 checkpoint);
+NONSTD_PLATFORM_API  i64  arena_checkpoint(Arena *a);
+NONSTD_PLATFORM_API  void arena_rollback(Arena *a, i64 checkpoint);
 
-NONSTD_BASE_API  char* allocate_sprintf(Arena *a, char *fmt, ...);
-NONSTD_BASE_API  char* allocate_cstrdup(Arena *a, char *cstr);
+NONSTD_PLATFORM_API  char* allocate_sprintf(Arena *a, char *fmt, ...);
+NONSTD_PLATFORM_API  char* allocate_cstrdup(Arena *a, char *cstr);
 
 #define TALLOC_ALIGN 64
 #define TALLOC_HEADER_MAGIC 0xa110c8ed // "allocated :)"
@@ -310,9 +271,9 @@ typedef struct {
 } AllocationHeader;
 _Static_assert(sizeof(AllocationHeader) == TALLOC_ALIGN, "TALLOC_ALIGN value or size of AllocationHeader is wrong");
 
-NONSTD_BASE_API  AllocationHeader * arena_foreach(Arena *a, i64 *state);
+NONSTD_PLATFORM_API  AllocationHeader * arena_foreach(Arena *a, i64 *state);
 
-NONSTD_BASE_API  void print_allocation_header(AllocationHeader* x) ;
+NONSTD_PLATFORM_API  void print_allocation_header(AllocationHeader* x) ;
 
 /*
 	
@@ -333,57 +294,6 @@ NONSTD_BASE_API  void print_allocation_header(AllocationHeader* x) ;
 #define ALLOCATE(arena, array_var, len) array_var = allocate_named((arena), (len)*ssizeof((array_var)[0]), #array_var, 0)
 #define ZERO_FILL(array_var, len) memset((array_var), 0, sizeof((array_var)[0])*(len))
 
-/* 
-   ============================================================================
-		ERROR HANDLING
-   ============================================================================
-*/
-
-
-
-/*
-	die(), warn() and logmsg() provide convenient printf-like functions to emit 
-	messages. They do the familiar printf-like formatting to build a string, 
-	and then they call error_messge(), warning_message(), or info_message() respectively.
-	die() and warn() automatically include strerror(errno). die() terminates the program.
-
-	The aforementioned functions are suitable for messages up to 1000 characters. Longer
-	messages will be truncated.
-
-	error_message(), warning_message() and info_message() can be overridden by the user.
-	In the translation unit where you include util.h, define NONSTD_OVERRIDE_MESSAGE_FUNCTIONS
-	and then provide your own definitions for the three. Default implementations are provided.
-	The defaults:
-	- error_message() sends the message to stderr
-	- warning_message() sends the message to stderr
-        - info_message() sends the message to stdout	
-	- all three append a newline.
-*/
-
-
-NONSTD_BASE_API _Noreturn void 
-#if defined(__clang__) || defined(__GNUC__)
-__attribute__ ((format (printf, 1, 2)))
-#endif
-die (char *fmt, ...);
-
-NONSTD_BASE_API void 
-#if defined(__clang__) || defined(__GNUC__)
-__attribute__ ((format (printf, 1, 2)))
-#endif
-warn (char *fmt, ...);
-
-NONSTD_BASE_API void 
-#if defined(__clang__) || defined(__GNUC__)
-__attribute__ ((format (printf, 1, 2)))
-#endif
-logmsg (char *fmt, ...);
-
-NONSTD_BASE_API  void error_message   (char * str);
-NONSTD_BASE_API  void warning_message (char * str);
-NONSTD_BASE_API  void info_message    (char * str);
-
-
 
 /* 
    ============================================================================
@@ -395,16 +305,16 @@ typedef struct {
 	void *mem;
 } FileContents;
 
-NONSTD_BASE_API  FileContents platform_read_file(char *filename);
+NONSTD_PLATFORM_API  FileContents platform_read_file(char *filename);
 
-NONSTD_BASE_API  int platform_read_file_into_buffer(i64 buffer_size, void *buffer, i64 *file_size, char *filename);
-NONSTD_BASE_API  int platform_read_file_into_arena(Arena *a, void **file_bytes, i64 *file_size, char *filename);
-NONSTD_BASE_API  int platform_write_file(char * filename, void *what, size_t bytes);
+NONSTD_PLATFORM_API  int platform_read_file_into_buffer(i64 buffer_size, void *buffer, i64 *file_size, char *filename);
+NONSTD_PLATFORM_API  int platform_read_file_into_arena(Arena *a, void **file_bytes, i64 *file_size, char *filename);
+NONSTD_PLATFORM_API  int platform_write_file(char * filename, void *what, size_t bytes);
 
-NONSTD_BASE_API  i64 platform_get_file_size(char *filename);
+NONSTD_PLATFORM_API  i64 platform_get_file_size(char *filename);
 
 // Writes out the message from errno or GetLastError with a user-provided message prefix
-NONSTD_BASE_API  void errmsg_from_platform(char * prefix);
+NONSTD_PLATFORM_API  void errmsg_from_platform(char * prefix);
 
 
 /* 
@@ -414,15 +324,15 @@ NONSTD_BASE_API  void errmsg_from_platform(char * prefix);
 */
 
 // returns 0 on failure
-NONSTD_BASE_API  void* platform_reserve_mem(size_t size);
+NONSTD_PLATFORM_API  void* platform_reserve_mem(size_t size);
 
 // returns 0 on failure, true on success.
 // NOTE: start is rounded DOWN to the page size, and len is rounded UP to the end of the page. 
-NONSTD_BASE_API  int platform_unreserve_mem(void *start, size_t len);
-NONSTD_BASE_API  int platform_decommit_mem (void* start, size_t len);
-NONSTD_BASE_API  int platform_commit_mem   (void* start, size_t len); 
-NONSTD_BASE_API  int platform_lock_mem     (void *start, size_t len);
-NONSTD_BASE_API  int platform_unlock_mem   (void *start, size_t len);
+NONSTD_PLATFORM_API  int platform_unreserve_mem(void *start, size_t len);
+NONSTD_PLATFORM_API  int platform_decommit_mem (void* start, size_t len);
+NONSTD_PLATFORM_API  int platform_commit_mem   (void* start, size_t len); 
+NONSTD_PLATFORM_API  int platform_lock_mem     (void *start, size_t len);
+NONSTD_PLATFORM_API  int platform_unlock_mem   (void *start, size_t len);
 
 
 #endif 
@@ -439,121 +349,337 @@ NONSTD_BASE_API  int platform_unlock_mem   (void *start, size_t len);
    ----------------------------------------------------------------------------
    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
-#ifdef NONSTD_BASE_IMPLEMENTATION
+#ifdef NONSTD_PLATFORM_IMPLEMENTATION
 #include <string.h>
-
-NONSTD_BASE_API int32_t 
-msi_ht_lookup(uint64_t hash, int exp, int32_t idx)
-{
-	u32 mask = ((u32)1 << exp) - 1;
-	u32 step = (hash >> (64 - exp)) | 1;
-	return (idx + step) & mask;
-}
-
-NONSTD_BASE_API uint64_t 
-hash_cstr_FNV1a(char *s, int len)
-{
-	uint64_t h = 0x2b992ddfa23249d6;
-	for(int32_t i = 0; i < len; i++)
-	{
-		h ^= s[i] & 255;
-		h *= 1111111111111111111;
-	}
-	return h ^ h>>32;
-}
-
-NONSTD_BASE_API uint64_t 
-hash_i64(int64_t x)
-{
-	char s[sizeof(x)];
-	memcpy(s,&x,sizeof(x));
-	return hash_cstr_FNV1a(s,sizeof(x));
-}
-
-NONSTD_BASE_API uint64_t 
-hash_u64(uint64_t x)
-{
-	char s[sizeof(x)];
-	memcpy(s,&x,sizeof(x));
-	return hash_cstr_FNV1a(s,sizeof(x));
-}
-
 #include <limits.h>
 #include <math.h>
 
-NONSTD_BASE_API uint32_t 
-rand_pcg32 (uint64_t state[static 1])
+
+// Most architectures have special instructions which hint to the CPU that we're in a spin-lock loop.
+#if   defined(__x86_64__)
+#define SPIN_LOOP_HINT()  __asm __volatile ("pause"); 
+#elif defined(__arm__)
+#define SPIN_LOOP_HINT()  __asm __volatile ("yield"); 
+#else
+#define SPIN_LOOP_HINT() 
+#endif
+
+NONSTD_PLATFORM_API void 
+ticket_mutex_lock(TicketMutex *m)
 {
-	// Pseudorandom number generator - (simplified) Permuted Congruential Generator
-	uint64_t m = 0x9b60933458e17d7d; // prime
-	uint64_t a = 0xd737232eeccdf7ed; // prime
-	state[0] = state[0] * m + a;
-	int shift = 29 - (state[0] >> 61);
-	return state[0] >> shift;
-}
-
-
-NONSTD_BASE_API float 
-randn_pcg32 (uint64_t state[static 1])
-{
-	const float pi = 3.141592653589793238462643383f;
-	const float u32max = (float)UINT32_MAX;
-	// standard normal distributed random double generator
-	float u1 = rand_pcg32(state);
-	float u2 = rand_pcg32(state);
-	return sqrtf(-2.0f*logf(u1/u32max)) * cosf(2.0f*pi*(u2/u32max));
-}
-
-NONSTD_BASE_API float 
-randp_pcg32 (uint64_t state[static 1], float lambda)
-{
-	const float u32max = (float)UINT32_MAX;
-	// poisson distribution random double generator
-	// slow for large lambda
-	int k = 0; 
-	float p = 1;
-	float L = expf(-lambda);
-	do {
-		k++;
-		p *= rand_pcg32(state)/u32max;
-	} while (p > L);
-	return --k;
-}
-
-NONSTD_BASE_API int
-bubblesort_step (BubbleSort *state, int N)
-{
-	int *c = &state->private[0];
-	int *i = &state->private[1];
-
-	if (state->a || state->b) {
-		if(state->swap) *c = 1;
-		goto innerloop_continuation;
+	uint32_t my_ticket = __atomic_fetch_add(&m->ticket, 1, __ATOMIC_RELAXED);
+	while (my_ticket != __atomic_load_n(&m->serving, __ATOMIC_ACQUIRE)) {
+		SPIN_LOOP_HINT();
 	}
+}
 
-	do {
-		*c = 0;
-		for (*i = 1; *i < N; (*i)++) {
-			state->a = *i-1;
-			state->b = *i;
-			return 1;
-			innerloop_continuation: continue;
-		}
-	} while (*c);
+NONSTD_PLATFORM_API void 
+ticket_mutex_unlock(TicketMutex *m) 
+{
+        (void) __atomic_fetch_add(&m->serving, 1, __ATOMIC_RELEASE);
+}
 
+NONSTD_PLATFORM_API int 
+once_enter(int *b)
+{
+	if(2 == __atomic_load_n(b, __ATOMIC_SEQ_CST)) return 0;
+
+	int zero = 0;
+	int got_lock = __atomic_compare_exchange_n(b, &zero, 1, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+	if (got_lock) return 1;
+
+	while (2 != __atomic_load_n(b, __ATOMIC_SEQ_CST)) {
+		SPIN_LOOP_HINT();
+	};
 	return 0;
 }
 
+NONSTD_PLATFORM_API void 
+once_commit(int *b)
+{
+	(void) __atomic_store_n(b, 2, __ATOMIC_SEQ_CST);
+}
 
 
-// marginally-documented feature - supply your own printf implementation!
-// but I'm not sure there are actually used everywhere yet
-#ifndef xsnprintf
-#define xsnprintf(...) snprintf(__VA_ARGS__)
+NONSTD_PLATFORM_API int
+queue_push(uint32_t *q, int exp)
+{
+	uint32_t r = __atomic_load_n(q, __ATOMIC_ACQUIRE);
+	int mask = (1u << exp) - 1;
+	int head = r     & mask;
+	int tail = r>>16 & mask;
+	int next = (head + 1u) & mask;
+	if (r & 0x8000) {  // avoid overflow on commit
+		__atomic_and_fetch(q, ~0x8000, __ATOMIC_RELEASE);
+	}
+	return next == tail ? -1 : head;
+}
+
+NONSTD_PLATFORM_API void
+queue_push_commit(uint32_t *q)
+{
+	__atomic_add_fetch(q, 1, __ATOMIC_RELEASE);
+}
+
+NONSTD_PLATFORM_API int
+queue_pop(uint32_t *q, int exp)
+{
+	uint32_t r = __atomic_load_n(q, __ATOMIC_ACQUIRE);
+	int mask = (1u << exp) - 1;
+	int head = r     & mask;
+	int tail = r>>16 & mask;
+	return head == tail ? -1 : tail;
+}
+
+NONSTD_PLATFORM_API void
+queue_pop_commit(uint32_t *q)
+{
+	__atomic_add_fetch(q, 0x10000, __ATOMIC_RELEASE);
+}
+
+NONSTD_PLATFORM_API int
+queue_mpop(uint32_t *q, int exp, uint32_t *save)
+{
+	uint32_t r = *save = __atomic_load_n(q, __ATOMIC_ACQUIRE);
+	int mask = (1u << exp) - 1;
+	int head = r     & mask;
+	int tail = r>>16 & mask;
+	return head == tail ? -1 : tail;
+}
+
+NONSTD_PLATFORM_API int
+queue_mpop_commit(uint32_t *q, uint32_t save)
+{
+	return __atomic_compare_exchange_n(q, &save, save+0x10000, 0, __ATOMIC_RELEASE, __ATOMIC_RELAXED);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// FUTEXES are highly os-specifc, so they get their own section
+//
+#include <limits.h>
+#if defined(__linux__) 
+// LINUX
+#include <linux/futex.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+static void futex_wait(uint32_t *f, uint32_t expected) { syscall(SYS_futex, f, FUTEX_WAIT, expected, 0, 0, 0); }
+static void futex_wake_one(uint32_t *f) { syscall(SYS_futex, f, FUTEX_WAKE, 1, 0, 0, 0); }
+static void futex_wake_all(uint32_t *f) { syscall(SYS_futex, f, FUTEX_WAKE, INT_MAX, 0, 0, 0); }
+#elif defined(__OPENBSD__) 
+// OPENBSD
+#include <sys/futex.h>
+static void futex_wait(uint32_t *f, uint32_t expected) { futex(f, FUTEX_WAIT, expected, 0, 0); }
+static void futex_wake_one(uint32_t *f) { futex(f, FUTEX_WAKE, 1, 0, 0); }
+static void futex_wake_all(uint32_t *f) { futex(f, FUTEX_WAKE, INT_MAX, 0, 0); }
+#elif defined(__FreeBSD__) 
+// FREEBSD
+#include <sys/types.h>
+#include <sys/umtx.h>
+static void futex_wait(uint32_t *f, uint32_t expected) { _umtx_op(f, UMTX_OP_WAIT_UINT, expected, 0, 0); }
+static void futex_wake_one(uint32_t *f) { _umtx_op(f, UMTX_OP_WAKE, 1, 0, 0); }
+static void futex_wake_all(uint32_t *f) { _umtx_op(f, UMTX_OP_WAKE, INT_MAX, 0, 0); }
+#elif defined (_WIN32) 
+// WINDOWS
+#ifdef _MSC_VER
+#  pragma comment(lib, "ntdll.lib")
 #endif
-#ifndef xvsnprintf
-#define xvsnprintf(...) vsnprintf(__VA_ARGS__)
-#endif 
+__declspec(dllimport) long __stdcall RtlWaitOnAddress(void *, void *, size_t, void *);
+__declspec(dllimport) long __stdcall RtlWakeAddressAll(void *);
+__declspec(dllimport) long __stdcall RtlWakeAddressSingle(void *);
+static void futex_wait(uint32_t *f, uint32_t expected) { RtlWaitOnAddress(f, &expected, sizeof(*f), 0); }
+static void futex_wake_one(uint32_t *f) { RtlWakeAddressSingle(f); }
+static void futex_wake_all(uint32_t *f) { RtlWakeAddressAll(f); }
+#else 
+// UNSUPPORTED PLATFORM 
+// no-op (hopefully the use case will fall back on a spin lock)
+static void futex_wait(uint32_t *f, uint32_t expected) { SPIN_LOOP_HINT(); }
+static void futex_wake_one(uint32_t *f) { }
+static void futex_wake_all(uint32_t *f) { }
+#endif
+
+
+#ifndef assert
+#  ifdef DISABLE_ASSERTIONS
+#    define assert(c)
+#  elif defined(_MSC_VER)
+#    define assert(c) if(!(c)){__debugbreak();}
+#  elif defined(__GNUC__) || defined(__clang__)
+#    define assert(c) if(!(c)){__builtin_trap();}
+#  else 
+#    define assert(c) if(!(c)){*(volatile int*)0=0;}
+#  endif
+#endif
+
+
+NONSTD_PLATFORM_API void 
+event_wait(uint32_t *event)
+{
+	// 1-bit set: there are waiters
+	// 2-bit set: the event has been posted
+	while(1) {
+		uint32_t v = __atomic_or_fetch(event, 0x1, __ATOMIC_ACQUIRE);
+		if (v & 0x02) break;
+		futex_wait(event, v);
+	}
+}
+
+NONSTD_PLATFORM_API void 
+event_post(uint32_t *event)
+{
+	uint32_t v = __atomic_fetch_or(event, 0x2, __ATOMIC_RELEASE);
+	if (v & 0x1) futex_wake_all(event);
+
+}
+
+NONSTD_PLATFORM_API void 
+event_reset(uint32_t *event)
+{
+	__atomic_store_n(event, 0, __ATOMIC_RELAXED);
+}
+
+
+NONSTD_PLATFORM_API void 
+semaphore_wait(uint32_t *sem)
+{
+	uint32_t v = 1;
+	while(!__atomic_compare_exchange_n(sem, &v, v-1, 0, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) {
+		if(v == 0) {
+			futex_wait(sem, v);
+			v = 1;
+		}
+	}
+}
+
+NONSTD_PLATFORM_API void 
+semaphore_post(uint32_t *sem)
+{
+	uint32_t v = __atomic_fetch_add(sem, 1, __ATOMIC_RELEASE);
+	assert(v < INT32_MAX);
+	//if (v == 0) futex_wake_one(sem); // <-- bug
+	//TODO(performance): no syscall if no waiters
+	futex_wake_one(sem);
+}
+
+NONSTD_PLATFORM_API int  
+blocking_queue_push(BlockingConcurrentQueue *q)
+{
+	semaphore_wait(&q->producer_slots);
+	semaphore_wait(&q->access_semaphore);
+	int i = queue_push(&q->q, q->exp);
+	assert(i >= 0);
+	return i;
+}
+
+NONSTD_PLATFORM_API void 
+blocking_queue_push_commit(BlockingConcurrentQueue *q)
+{
+	queue_push_commit(&q->q);
+	semaphore_post(&q->access_semaphore);
+	semaphore_post(&q->consumer_slots);
+}
+
+NONSTD_PLATFORM_API int  
+blocking_queue_pop(BlockingConcurrentQueue *q)
+{
+	semaphore_wait(&q->consumer_slots);
+	semaphore_wait(&q->access_semaphore);
+	int i = queue_pop(&q->q, q->exp);
+	assert(i >= 0);
+	return i;
+}
+
+NONSTD_PLATFORM_API void 
+blocking_queue_pop_commit(BlockingConcurrentQueue *q)
+{
+	queue_pop_commit(&q->q);
+	semaphore_post(&q->access_semaphore);
+	semaphore_post(&q->producer_slots);
+}
+
+
+/* 
+   ........................................
+		UNIX-SPECIFC
+   ........................................
+*/
+#if defined(__linux__) || defined(__unix__) || defined(__unix) || defined(__APPLE__)
+#include <sys/time.h> // gettimeofday
+NONSTD_PLATFORM_API uint64_t
+get_os_timer_freq(void) {
+	return 1000000ull;
+}
+
+NONSTD_PLATFORM_API uint64_t 
+read_os_timer(void) {
+	struct timeval tval;
+	gettimeofday(&tval, 0);
+	return (uint64_t)tval.tv_sec * get_os_timer_freq() + (uint64_t)tval.tv_usec;
+}
+
+
+/* 
+   ........................................
+		WINDOWS-SPECIFC
+   ........................................
+*/
+#elif defined(_WIN32)
+#include <windows.h>
+
+NONSTD_PLATFORM_API uint64_t
+get_os_timer_freq(void) {
+	static uint64_t tick_freq = 1.0;
+	static int b = 0;
+	if (once_enter(&b)) {
+		LARGE_INTEGER x = {0};
+		QueryPerformanceFrequency(&x);
+		tick_freq = x.QuadPart;
+		once_commit(&b);
+	}
+	return tick_freq;
+}
+
+NONSTD_PLATFORM_API uint64_t 
+read_os_timer(void) 
+{
+	LARGE_INTEGER now = {0};
+	QueryPerformanceCounter(&now);
+	uint64_t wtime = now.QuadPart;
+}
+#endif
+
+NONSTD_PLATFORM_API double 
+cpu_time_to_sec(uint64_t cpu_time_elapsed) 
+{
+	static int b = 0;
+	static uint64_t cpu_freq = 0;
+	static double cpu_freq_fp = 0.0;
+
+	if(once_enter(&b)) {
+		uint64_t start_cpu = read_cpu_timer();
+		uint64_t start_os  = read_os_timer();
+		uint64_t elapsed_os = 0;
+		while(elapsed_os < 100000) { // 100ms, not 1 full second!
+			elapsed_os = read_os_timer()-start_os;
+		}
+		uint64_t end_cpu = read_cpu_timer();
+		uint64_t elapsed_cpu = end_cpu - start_cpu;
+
+		cpu_freq = 1000000ull * elapsed_cpu / elapsed_os;
+		cpu_freq_fp = cpu_freq;
+
+		once_commit(&b);
+	}
+
+	return (double)cpu_time_elapsed / cpu_freq_fp;
+}
+
+
+NONSTD_PLATFORM_API double 
+get_wtime(void) 
+{
+	return cpu_time_to_sec(read_cpu_timer());
+}
+
 
 
 /* 
@@ -565,7 +691,7 @@ bubblesort_step (BubbleSort *state, int N)
 #include <stdio.h>
 #include <stdlib.h>
 
-NONSTD_BASE_API int
+NONSTD_PLATFORM_API int
 platform_write_file(char * filename, void *what, size_t bytes) 
 {
 	FILE *f = fopen(filename, "wb");
@@ -584,7 +710,7 @@ platform_write_file(char * filename, void *what, size_t bytes)
 	return 1;
 }
 
-NONSTD_BASE_API i64
+NONSTD_PLATFORM_API i64
 platform_get_file_size(char *filename)
 {
 	FILE *f = fopen(filename, "rb");
@@ -615,7 +741,7 @@ platform_get_file_size(char *filename)
 	return pos;
 }
 
-NONSTD_BASE_API FileContents 
+NONSTD_PLATFORM_API FileContents 
 platform_read_file(char *filename)
 {
 	FILE * f = fopen(filename, "rb");
@@ -634,7 +760,7 @@ platform_read_file(char *filename)
 	};
 }
 
-NONSTD_BASE_API int 
+NONSTD_PLATFORM_API int 
 platform_read_file_into_buffer(i64 buffer_size, void *buffer, i64 *file_size, char *filename)
 {
 	FILE *f = fopen(filename, "rb");
@@ -673,7 +799,7 @@ platform_read_file_into_buffer(i64 buffer_size, void *buffer, i64 *file_size, ch
 	return 1;
 }
 
-NONSTD_BASE_API int 
+NONSTD_PLATFORM_API int 
 platform_read_file_into_arena(Arena *a, void **file_bytes, i64 *file_size, char *filename)
 {
 	FILE *f = fopen(filename, "rb");
@@ -722,17 +848,17 @@ platform_read_file_into_arena(Arena *a, void **file_bytes, i64 *file_size, char 
 #include <inttypes.h>
 
 #ifndef NONSTD_OVERRIDE_MESSAGE_FUNCTIONS
-	NONSTD_BASE_API void error_message (char * str)
+	NONSTD_PLATFORM_API void error_message (char * str)
 	{
 		fprintf(stderr, "%s\n", str);
 		fflush(stderr);
 	}
-	NONSTD_BASE_API void warning_message (char * str)
+	NONSTD_PLATFORM_API void warning_message (char * str)
 	{
 		fprintf(stderr, "%s\n", str);
 		fflush(stderr);
 	}
-	NONSTD_BASE_API void info_message (char * str)
+	NONSTD_PLATFORM_API void info_message (char * str)
 	{
 		fprintf(stdout, "%s\n", str);
 		fflush(stdout);
@@ -745,7 +871,7 @@ platform_read_file_into_arena(Arena *a, void **file_bytes, i64 *file_size, char 
 #include <string.h>
 
 
-NONSTD_BASE_API _Noreturn void 
+NONSTD_PLATFORM_API _Noreturn void 
 #if defined(__clang__) || defined(__GNUC__)
 __attribute__ ((format (printf, 1, 2)))
 #endif
@@ -761,7 +887,7 @@ die (char *fmt, ...)
 	exit(EXIT_FAILURE);
 }
 
-NONSTD_BASE_API void 
+NONSTD_PLATFORM_API void 
 #if defined(__clang__) || defined(__GNUC__)
 __attribute__ ((format (printf, 1, 2)))
 #endif
@@ -776,7 +902,7 @@ warn (char *fmt, ...)
 	warning_message(buf);
 }
 
-NONSTD_BASE_API void 
+NONSTD_PLATFORM_API void 
 #if defined(__clang__) || defined(__GNUC__)
 __attribute__ ((format (printf, 1, 2)))
 #endif
@@ -800,12 +926,12 @@ logmsg (char *fmt, ...)
 #if defined(__linux__)
 #define _GNU_SOURCE
 #include <unistd.h>   // _SC_PAGE_SIZE, etc
-NONSTD_BASE_API i64 platform_get_page_size(void)
+NONSTD_PLATFORM_API i64 platform_get_page_size(void)
 {
 	return sysconf(_SC_PAGE_SIZE);
 }
 
-NONSTD_BASE_API i64 get_total_mem_bytes (void) 
+NONSTD_PLATFORM_API i64 get_total_mem_bytes (void) 
 {
 	// Negative return value = error.
 	i64 ps = platform_get_page_size();
@@ -827,7 +953,7 @@ NONSTD_BASE_API i64 get_total_mem_bytes (void)
 #include <errno.h>
 #include <stdio.h>
 
-NONSTD_BASE_API void 
+NONSTD_PLATFORM_API void 
 errmsg_from_platform(char * prefix) 
 {
 	char msg[128] = {0};
@@ -836,7 +962,7 @@ errmsg_from_platform(char * prefix)
 	error_message(msg);
 }
 
-NONSTD_BASE_API void* 
+NONSTD_PLATFORM_API void* 
 platform_reserve_mem(size_t size)
 {
 	void* p = mmap(0, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
@@ -856,7 +982,7 @@ static i64 offset_from_prev_page_boundary(void* addr)
 }
 
 
-NONSTD_BASE_API int 
+NONSTD_PLATFORM_API int 
 platform_commit_mem(void* start, size_t len)
 {
 	i64 offset = offset_from_prev_page_boundary(start);
@@ -871,7 +997,7 @@ platform_commit_mem(void* start, size_t len)
 	return 1;
 }
 
-NONSTD_BASE_API int 
+NONSTD_PLATFORM_API int 
 platform_lock_mem(void *start, size_t len)
 {
 	i64 offset = offset_from_prev_page_boundary(start);
@@ -886,7 +1012,7 @@ platform_lock_mem(void *start, size_t len)
 	return 1;
 }
 
-NONSTD_BASE_API int 
+NONSTD_PLATFORM_API int 
 platform_unlock_mem(void *start, size_t len)
 {
 	i64 offset = offset_from_prev_page_boundary(start);
@@ -901,7 +1027,7 @@ platform_unlock_mem(void *start, size_t len)
 	return 1;
 }
 
-NONSTD_BASE_API int
+NONSTD_PLATFORM_API int
 platform_decommit_mem(void* start, size_t len)
 {
 	i64 offset = offset_from_prev_page_boundary(start);
@@ -922,7 +1048,7 @@ platform_decommit_mem(void* start, size_t len)
 	return 1;
 }
 
-NONSTD_BASE_API int 
+NONSTD_PLATFORM_API int 
 platform_unreserve_mem(void *start, size_t len)
 {
 	int rc = munmap(start,len);
@@ -944,7 +1070,7 @@ platform_unreserve_mem(void *start, size_t len)
 #elif defined(_WIN32)
 #include <windows.h>
 
-NONSTD_BASE_API i64 
+NONSTD_PLATFORM_API i64 
 platform_get_page_size(void)
 {
 	SYSTEM_INFO si = {0};
@@ -952,7 +1078,7 @@ platform_get_page_size(void)
 	return si.dwAllocationGranularity;
 }
 
-NONSTD_BASE_API i64 
+NONSTD_PLATFORM_API i64 
 get_total_mem_bytes (void) 
 {
 	// Negative return value = error.
@@ -964,7 +1090,7 @@ get_total_mem_bytes (void)
 
 #include <stdio.h>
 
-NONSTD_BASE_API void 
+NONSTD_PLATFORM_API void 
 errmsg_from_platform(char * prefix) {
 	char msg[256] = {0};
 	unsigned e = GetLastError(); 
@@ -974,7 +1100,7 @@ errmsg_from_platform(char * prefix) {
 }
 
 
-NONSTD_BASE_API void* 
+NONSTD_PLATFORM_API void* 
 platform_reserve_mem(size_t size)
 {
 	void *p = VirtualAlloc(0, size, MEM_RESERVE, PAGE_NOACCESS);
@@ -986,7 +1112,7 @@ platform_reserve_mem(size_t size)
 }
 
 
-NONSTD_BASE_API int 
+NONSTD_PLATFORM_API int 
 platform_commit_mem(void* start, size_t len)
 {
 	if(NULL == VirtualAlloc(start, len, MEM_COMMIT, PAGE_READWRITE)){
@@ -996,7 +1122,7 @@ platform_commit_mem(void* start, size_t len)
 	return 1;
 }
 
-NONSTD_BASE_API int 
+NONSTD_PLATFORM_API int 
 platform_lock_mem(void *start, size_t len)
 {
 	if(!VirtualLock(start, len)) {
@@ -1006,7 +1132,7 @@ platform_lock_mem(void *start, size_t len)
 	return 1;
 }
 
-NONSTD_BASE_API int 
+NONSTD_PLATFORM_API int 
 platform_unlock_mem(void *start, size_t len)
 {
 	if(!VirtualUnlock(start, len)) {
@@ -1016,7 +1142,7 @@ platform_unlock_mem(void *start, size_t len)
 	return 1;
 }
 
-NONSTD_BASE_API int 
+NONSTD_PLATFORM_API int 
 platform_decommit_mem(void* start, size_t len)
 {
 	if(!VirtualFree(start, len, MEM_DECOMMIT)) {
@@ -1026,7 +1152,7 @@ platform_decommit_mem(void* start, size_t len)
 	return 1;
 }
 
-NONSTD_BASE_API int 
+NONSTD_PLATFORM_API int 
 platform_unreserve_mem(void *start, size_t len)
 {
 	if(!VirtualFree(start, len, MEM_DECOMMIT | MEM_RELEASE)) {
@@ -1055,7 +1181,7 @@ platform_unreserve_mem(void *start, size_t len)
 #include <math.h>
 
 
-NONSTD_BASE_API void * 
+NONSTD_PLATFORM_API void * 
 xmalloc(i64 bytes) 
 {
 	void *p = malloc(bytes);
@@ -1064,7 +1190,7 @@ xmalloc(i64 bytes)
 	return p;
 }
 
-NONSTD_BASE_API void * 
+NONSTD_PLATFORM_API void * 
 xrealloc(void *p, i64 bytes)
 {
 	p = realloc(p,bytes);
@@ -1081,7 +1207,7 @@ get_header(void *p) {
 	return h;
 }
 
-NONSTD_BASE_API int 
+NONSTD_PLATFORM_API int 
 allocation_check_name(void *p, char *name, int name_len)
 {
 	AllocationHeader *h = get_header(p);
@@ -1090,31 +1216,31 @@ allocation_check_name(void *p, char *name, int name_len)
 }
 
 
-NONSTD_BASE_API i64 
+NONSTD_PLATFORM_API i64 
 arena_get_used_memory(Arena *a)
 {
 	return a->used;
 }
 					    
-NONSTD_BASE_API i64 
+NONSTD_PLATFORM_API i64 
 allocation_size(void *p)
 {
 	return get_header(p)->sz;
 }
 
-NONSTD_BASE_API i64 
+NONSTD_PLATFORM_API i64 
 allocation_capacity(void *p)
 {
 	return get_header(p)->cap;
 }
 
-NONSTD_BASE_API i64 
+NONSTD_PLATFORM_API i64 
 arena_checkpoint(Arena *a)
 {
 	return a->used;
 }
 
-NONSTD_BASE_API void 
+NONSTD_PLATFORM_API void 
 arena_rollback(Arena *a, i64 checkpoint)
 {
 	assert(checkpoint <= a->used);
@@ -1173,7 +1299,7 @@ allocate_named_ (Arena *a, i64 sz_, char *name, int name_len)
 	return rtn;
 }
 
-NONSTD_BASE_API void* 
+NONSTD_PLATFORM_API void* 
 allocate_named  (Arena *a, i64 sz_, char *name, int name_len) 
 {
 	// zeros memory
@@ -1182,7 +1308,7 @@ allocate_named  (Arena *a, i64 sz_, char *name, int name_len)
 	return mem;
 }
 
-NONSTD_BASE_API void* 
+NONSTD_PLATFORM_API void* 
 allocate (Arena *a, i64 sz_) 
 {
 	// zeros memory
@@ -1190,14 +1316,14 @@ allocate (Arena *a, i64 sz_)
 }
 
 
-NONSTD_BASE_API void* 
+NONSTD_PLATFORM_API void* 
 allocate_empty(Arena *a, i64 sz_) 
 {
 	// leaves memory uninitialized
 	return allocate_named_(a,sz_,0,0);
 }
 
-NONSTD_BASE_API void* 
+NONSTD_PLATFORM_API void* 
 allocate_empty_named  (Arena *a, i64 sz_, char *name, int name_len) 
 {
 	// leaves memory uninitialized
@@ -1206,7 +1332,7 @@ allocate_empty_named  (Arena *a, i64 sz_, char *name, int name_len)
 
 
 
-NONSTD_BASE_API void 
+NONSTD_PLATFORM_API void 
 arena_clear(Arena *a, int reclaim)
 {
 	// note to editors: make sure this always works on zero-initialized arenas (={0})
@@ -1219,7 +1345,7 @@ arena_clear(Arena *a, int reclaim)
 	ticket_mutex_unlock(&a->mtx);
 }
 
-NONSTD_BASE_API void 
+NONSTD_PLATFORM_API void 
 arena_destroy(Arena *a)
 {
 	ticket_mutex_lock(&a->mtx);
@@ -1232,14 +1358,14 @@ arena_destroy(Arena *a)
 	ticket_mutex_unlock(&a->mtx);
 }
 
-NONSTD_BASE_API int 
+NONSTD_PLATFORM_API int 
 arena_dump_file(Arena *a, char * filename) 
 {
 	return platform_write_file(filename, a->mem, a->used);
 }
 
 
-NONSTD_BASE_API i64 
+NONSTD_PLATFORM_API i64 
 arena_dump(i64 bufsz, void *buf, Arena *a)
 {
 	i64 cpysz = bufsz < a->used  ?  bufsz  :  a->used;
@@ -1248,7 +1374,7 @@ arena_dump(i64 bufsz, void *buf, Arena *a)
 	return a->used;
 }
 
-NONSTD_BASE_API Arena 
+NONSTD_PLATFORM_API Arena 
 arena_load_file(char * filename, i64 sz_reserve_extra)
 {
 	i64 sz = 0;
@@ -1272,7 +1398,7 @@ arena_load_file(char * filename, i64 sz_reserve_extra)
 
 
 
-NONSTD_BASE_API void *
+NONSTD_PLATFORM_API void *
 allocation_copy(Arena *a, void *src_data)
 {
 	AllocationHeader *src_hdr = get_header(src_data);
@@ -1286,20 +1412,20 @@ allocation_copy(Arena *a, void *src_data)
 	return dst_data;
 }
 
-NONSTD_BASE_API void 
+NONSTD_PLATFORM_API void 
 arena_mem_lock(Arena *a)
 {
 	assert(platform_lock_mem(a->mem, a->used));
 }
 
-NONSTD_BASE_API void 
+NONSTD_PLATFORM_API void 
 arena_mem_unlock(Arena *a)
 {
 	assert(platform_unlock_mem(a->mem, a->used));
 }
 
 
-NONSTD_BASE_API void *
+NONSTD_PLATFORM_API void *
 allocation_lookup(Arena *a, char *name, int name_len)
 {
 	assert(name);
@@ -1321,7 +1447,7 @@ allocation_lookup(Arena *a, char *name, int name_len)
 	return 0;
 }
 
-NONSTD_BASE_API char* 
+NONSTD_PLATFORM_API char* 
 allocate_sprintf(Arena *a, char *fmt, ...)
 {
 	va_list args1, args2;
@@ -1335,7 +1461,7 @@ allocate_sprintf(Arena *a, char *fmt, ...)
 	return mem;
 }
 
-NONSTD_BASE_API char* 
+NONSTD_PLATFORM_API char* 
 allocate_cstrdup(Arena *a, char *cstr)
 {
         if(!string) return 0;
@@ -1345,7 +1471,7 @@ allocate_cstrdup(Arena *a, char *cstr)
         return mem;
 }
 
-NONSTD_BASE_API AllocationHeader * 
+NONSTD_PLATFORM_API AllocationHeader * 
 arena_foreach(Arena *a, i64 *state)
 {
 	assert(*state > -1 && *state <= a->used);
@@ -1357,7 +1483,7 @@ arena_foreach(Arena *a, i64 *state)
 }
 
 
-NONSTD_BASE_API int 
+NONSTD_PLATFORM_API int 
 fmt_mem_quantity(i64 sz, char * buf, i64 quantity, int print_if_small) 
 {
 	if (quantity >= GIGABYTES(1024)) 
@@ -1373,7 +1499,7 @@ fmt_mem_quantity(i64 sz, char * buf, i64 quantity, int print_if_small)
 	else return 0;
 }
 
-NONSTD_BASE_API void 
+NONSTD_PLATFORM_API void 
 print_allocation_header(AllocationHeader* x) 
 {
 	char name_buf[100] = {0};
