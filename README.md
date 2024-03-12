@@ -5,16 +5,14 @@ Many people who write a lot of C end up carrying around little snippets that the
 This repository is my collection of such snippets. 
 All code herein is in the public domain. 
 
-- `nonstd.h` contains useful tools that are written in pure C, with no platform or architecture specific code
-- `nonstd_platform.h` contains platform, compiler, or architecture-specific code. 
+- `nonstd.h` contains useful tools that are written in pure C. It depends on the C standard library, but there's no OS or architecture specific code.
+- `nonstd_platform.h` contains platform, compiler, and architecture-specific code. Depends on `nonstd.h` and on the C standard library.
 
-Both files depend on the C standard library. 
+This repository is inspired by the "single-header library" technique (popularized by Sean Barrett https://github.com/nothings/stb).
+`nonstd.h` and `nonstd_platform.h` are each single files which contain both the header and the implementation. See the comments at the top of each file for instructions on how to use them.
 
 Contributions are welcome. Most of the existing code was authored by me (Harris Snyder), but I've also added public domain code from other programmers. I've tried to give credit in comments wherever I've done this. 
 
-As a general note, I'm a huge fan of the "single-header library" technique (popularized by Sean Barrett https://github.com/nothings/stb).
-Although this repository isn't really a single-header library, 
-I divide things into multiple files only when there's good reason to. 
 
 ## Architecture, OS, and compiler support
 

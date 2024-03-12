@@ -2,8 +2,17 @@
 	Harris M. Snyder, 2023
 	This is free and unencumbered software released into the public domain.
 
-	The C standard library isn't great. Nonstd is my attempt to fill in some
-	of the gaps and increase the convenience of programming in C.
+	Nonstd is an attempt to fill in some of the gaps in the C standard library
+	and increase the convenience of programming in C.
+
+	nonstd.h is a single-header library. To use it: 
+	- Copy it into your project,
+	- Include the header as necessary,
+	- Do the following in exactly one translation unit:
+
+		#define NONSTD_PLATFORM_IMPLEMENTATION
+		#include "nonstd_platform.h"
+
 
 */
 
