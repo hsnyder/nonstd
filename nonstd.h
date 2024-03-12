@@ -269,233 +269,6 @@ NONSTD_API  void warning_message (char * str);
 NONSTD_API  void info_message    (char * str);
 
 
-/* 
-   ============================================================================
-		LAZY MEMORY MANAGEMENT
-   ============================================================================
-*/
-NONSTD_PLATFORM_API  void * xmalloc(i64 bytes);
-// calls malloc(), calls die() if malloc() fails
-
-NONSTD_PLATFORM_API  void * xrealloc(void *p, i64 bytes);
-// calls realloc(), calls die() if realloc() fails
-
-NONSTD_PLATFORM_API  i64 get_total_mem_bytes (void);  
-// return total machine memory size in bytes
-
-
-
-/* 
-   ============================================================================
-		ARENA MEMORY MANAGEMENT
-   ============================================================================
-
-   Some ideas drawn from Chris Wellons's excellent blog (https://nullprogram.com/) 
-*/
-
-typedef struct {
-	// A simple arena type. The caller is responsible for actually allocating the underlying memory
-	char *start; 
-	char *one_past_end;
-
-	// Notice we only track the current start, not the original start. This keeps the arena small
-	// which may be useful if it is frequently passed by value (which causes memory to be
-	// automatically "freed" upon return - great for scratch arenas).
-} Arena;
-
-enum {
-	// Flags for the alloc function
-	ALLOC_NO_ZERO   = 1<<0, // Don't zero the allocated memory
-	ALLOC_SOFT_FAIL = 1<<1, // Don't abort if the allocation fails, just return 0
-};
-
-NONSTD_API  void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t count, int flags);
-// Allocates memory in the arena. Supply the size and alignment of the type you're allocating.
-// If you're allocating an array, supply the number of elements in `count` (otherwise, pass 1). 
-// The flags are optional and can be zero or a bitwise or of the flags defined above.
-
-#define ALLOCATE(a, var, count) \
-	((var) = allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)_Alignof((var)[0]), (count), 0))
-// Convenience macro for allocating an array in an arena.
-// You can of course pass 1 for the count if you just want a single object.
-// Examples:
-//
-//	    float *my_array = 0;
-//	    ALLOCATE(&arena, my_array, N*M);
-//
-//	    float *other_array = ALLOCATE(&arena, other_array, N*M);
-
-#define ALLOCATE_EX(a, var, count, flags) \
-	((var) = alloc((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)_Alignof((var)[0]), (count), (flags)))
-// Extended version of ALLOCATE, which accepts a flags argument to be passed to allocate()
-
-#define ZERO_FILL(array_var, len) memset((array_var), 0, sizeof((array_var)[0])*(len))
-// Convenience macro for zero-filling an array.
-
-
-NONSTD_API  char* allocate_sprintf(Arena *a, int *len, const char *fmt, ...);
-// Like `sprintf`, but allocates the string in the arena. The string is null-terminated.
-// Also writes the length of the string (excluding NULL) to the optional len parameter, if provided.
-
-NONSTD_API char *allocate_strdup(Arena *a, char *s);
-// Like `strdup` but allocates the string in the arena. The string source and destination are 
-// null-terminated.
-
-
-
-NONSTD_API  Arena malloc_arena(ptrdiff_t cap);
-// Creates a new arena with the given capacity, using malloc to allocate the memory.
-// This function is for convenience and is best used only when the arena will last for the
-// duration of the program. If you need to deallocate the underlying memory, you'll need to 
-// retain a copy of the "start" pointer you get from this function, and pass that to free()
-
-
-
-
-/* 
-   ============================================================================
-		HASH MAPS
-   ============================================================================
-
-   Credit to Chris Wellons (https://nullprogram.com/) and NRK (https://nrk.neocities.org/) 
-   for the hash map design.
-
-*/
-
-#include <stddef.h>
-
-///////////   HASH MAPS  ////////////
-// 
-// This section offers implementations of a hash map and an ordered hash map which are designed
-// to be used with the Arena allocator. These data structures are not thread safe. Both are "intrusive"
-// in that they require the user to embed the hash map in their own data structure if the user wishes to 
-// store actual values in the hash map. The hash map can be used as a hash set with no need for
-// user-defined structures.
-//
-//   Example usage:
-// 
-//   typedef stuct MyType {
-//       int value;
-//       HashMap hm;
-//   } MyType;
-// 
-//   ...
-// 
-//   HashMap *hm = 0;
-//   MyType *p = hash_map_upsert(&hm, "key", &a, MyType);
-//   p->value = 666;
-//  
-// The ordered hash map is similar, but it also maintains a linked list of all the elements in 
-// reverse-insertion order. 
-
-
-// You can supply your own key type, but if you do so you must also supply a hash function, an equals function,
-// and a function to copy a key into an areana. By default, the key type is a null terminated c-string (char*),
-// and the hash function is FNV-1a.
-#ifndef HASH_MAP_KEY_TYPE
-  #define HASH_MAP_KEY_TYPE char*
-  #define HASH_MAP_KEY_HASH_FN(k)      nonstd_hashmap_hash_cstr(k)
-  #define HASH_MAP_KEY_EQUALS_FN(a,b)  nonstd_hashmap_equals_cstr(a,b)
-  #define HASH_MAP_KEY_COPY_FN(a, k)   allocate_strdup(a, k)
-#else
-  #ifndef HASH_MAP_KEY_HASH_FN
-    #error "If you're supplying your own HASH_MAP_KEY_TYPE you also must supply a hash function:  uint64_t hashfn(KEY_TYPE k)"
-  #endif
-  #ifndef HASH_MAP_KEY_EQUALS_FN
-    #error "If you're supplying your own HASH_MAP_KEY_TYPE you also must supply your own key comparison function:  int equalsfn(KEY_TYPE a, KEY_TYPE b)"
-  #endif
-  #ifndef HASH_MAP_KEY_COPY_FN
-    #error "If you're supplying your own HASH_MAP_KEY_TYPE you also must supply your own key copy function:  HASH_MAP_KEY cpyfn(Arena a, KEY_TYPE k)"
-  #endif
-#endif
-
-typedef struct HashMap{
-	// Simple intrusive hash map. On it's own, can function as a hash set.
-	struct HashMap *child[4];
-	HASH_MAP_KEY_TYPE key;
-} HashMap;
-
-typedef struct OrderedHashMap{
-	// Simple intrusive ordered hash map (tracks elements in reverse insertion order). 
-	// On it's own, can function as an ordered hash set.
-	struct OrderedHashMap *child[4];
-	struct OrderedHashMap *next;
-	HASH_MAP_KEY_TYPE key;
-} OrderedHashMap;
-
-
-enum {
-	// Flags for the hash map upsert functions
-	HASH_MAP_DUP_KEY = 1, // if an insertion is performed, this flag causes HASH_MAP_KEY_COPY_FN to be called.
-};
-
-NONSTD_API void *hash_map_upsert_general(
-	HashMap **hm, 
-	HASH_MAP_KEY_TYPE key, 
-	Arena *a, 
-	ptrdiff_t offset, 
-	ptrdiff_t size, 
-	ptrdiff_t align, 
-	int flags, 
-	int *insert_count);
-// "Upsert" = update & insert, in one function.
-// If the key is found, the function returns a pointer to the existing element. If the key is not found, 
-// the function allocates a new element in the arena and returns a pointer to it. Since the hash map is 
-// intrusive, the caller must supply the offset of the hash map within the data structure. The size and
-// alignment of the data structure are also required. The flags are optional and can be zero or a bitwise
-// OR of the flags defined above. The last parameter insert_count is optional, but if it's supplied, the
-// referred integer will be incremented if an insertion is performed. 
-// The returned pointer points to the user-defined data structure, not the hash map member within it.
-// 
-// Calling this function can be a bit cumbersome because of the need to supply sizes and alignments. 
-// See the convenience macros below, or, define your own upsert macro along with your data structure. 
-
-#define hash_map_upsert(hm, key, a, Type, member) \
-	hash_map_upsert_general(hm, key, a, (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)_Alignof(Type), 0, 0)
-// Convenience macro: you can supply your data structure type and the name of the HashMap member, 
-// instead of the size, alignment, anf offset.
-// Example:
-//	typedef struct { int value; HashMap hm; } MyType;
-//	MyType *p = hash_map_upsert(&hm, "key", &a, MyType, hm);
-
-#define hash_map_upsert_ex(hm, key, a, Type, member, flags, insert_count) \
-	hash_map_upsert_general(hm, key, a, (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)_Alignof(Type), (flags), (insert_count))
-// Extended version of hash_map_upsert, which accepts a flags argument and an optional insert_count argument.
-
-
-NONSTD_API void *ordered_hash_map_upsert_general(
-	OrderedHashMap **hm,
-	OrderedHashMap **list,
-	HASH_MAP_KEY_TYPE key,
-	Arena *a,
-	ptrdiff_t offset,
-	ptrdiff_t size,
-	ptrdiff_t align,
-	int flags,
-	int *insert_count);
-// This is the analagous upsert function for the ordered hash map. It's used in the same way as the 
-// hash_map_upsert function, only that it also maintains a linked list of all the elements in reverse
-// insertion order. The head of this list is tracked separately, via the list parameter.
-//
-// Again, some convenience macros are defined below, but you may want to define your own upsert macro
-// to go along with your data structure.
-
-#define ordered_hash_map_upsert(hm, list, key, a, Type, member) \
-	ordered_hash_map_upsert_general((hm), (list), (key), (a), (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)_Alignof(Type), 0, 0)		
-// Convenience macro: you can supply your data structure type and the name of the HashMap member,
-// instead of the size, alignment, and offset.
-
-#define ordered_hash_map_upsert_ex(hm, list, key, a, Type, member, flags, insert_count) \
-	ordered_hash_map_upsert_general((hm), (list), (key), (a), (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)_Alignof(Type), (flags), (insert_count))
-// Extended version of ordered_hash_map_upsert, which accepts a flags argument and an optional insert_count argument.
-
-
-NONSTD_API  OrderedHashMap *ordered_hash_map_list_reverse(OrderedHashMap *list);
-// Since the ordered hash map list is in reverse insertion order, 
-// this convenience function reverses the list in place and returns the new head of the list.
-
-
-
 
 /* 
    ============================================================================
@@ -704,7 +477,7 @@ NONSTD_API Str str_split_str(Str* s, Str delim);
 // Pops the first substring (delimited by `delim`) off of `s` (modifying it).
 // `s` will have zero-length if there's nothing left to pop.
 
-NONSTD_API int str_equal(Str a, Str b);
+NONSTD_API int str_equals(Str a, Str b);
 // Returns 1 if `a` and `b` are equal, 0 otherwise
 
 NONSTD_API int str_startswith(Str s, Str startswith);
@@ -722,6 +495,243 @@ NONSTD_API int str_pattern_match(Str *match, Str *string, CompiledStrPattern *pr
 // Updates `string` to point to the text after the match, and sets `match` to
 // the actual match. Returns 1 if a match was found, 0 if it was not (or if 
 // the program contains an error).
+
+static uint64_t hash_str_FNV1a(Str s) {return hash_cstr_FNV1a(s.ptr, s.len);}
+// Hashes a Str with FNV-1a
+
+
+
+
+/* 
+   ============================================================================
+		LAZY MEMORY MANAGEMENT
+   ============================================================================
+*/
+NONSTD_API  void * xmalloc(i64 bytes);
+// calls malloc(), calls die() if malloc() fails
+
+NONSTD_API  void * xrealloc(void *p, i64 bytes);
+// calls realloc(), calls die() if realloc() fails
+
+
+
+/* 
+   ============================================================================
+		ARENA MEMORY MANAGEMENT
+   ============================================================================
+
+   Some ideas drawn from Chris Wellons's excellent blog (https://nullprogram.com/) 
+*/
+
+typedef struct {
+	// A simple arena type. The caller is responsible for actually allocating the underlying memory
+	char *start; 
+	char *one_past_end;
+
+	// Notice we only track the current start, not the original start. This keeps the arena small
+	// which may be useful if it is frequently passed by value (which causes memory to be
+	// automatically "freed" upon return - great for scratch arenas).
+} Arena;
+
+enum {
+	// Flags for the alloc function
+	ALLOC_NO_ZERO   = 1<<0, // Don't zero the allocated memory
+	ALLOC_SOFT_FAIL = 1<<1, // Don't abort if the allocation fails, just return 0
+};
+
+NONSTD_API  void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t count, int flags);
+// Allocates memory in the arena. Supply the size and alignment of the type you're allocating.
+// If you're allocating an array, supply the number of elements in `count` (otherwise, pass 1). 
+// The flags are optional and can be zero or a bitwise or of the flags defined above.
+
+#define ALLOCATE(a, var, count) \
+	((var) = allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)_Alignof((var)[0]), (count), 0))
+// Convenience macro for allocating an array in an arena.
+// You can of course pass 1 for the count if you just want a single object.
+// Examples:
+//
+//	    float *my_array = 0;
+//	    ALLOCATE(&arena, my_array, N*M);
+//
+//	    float *other_array = ALLOCATE(&arena, other_array, N*M);
+
+#define ALLOCATE_EX(a, var, count, flags) \
+	((var) = alloc((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)_Alignof((var)[0]), (count), (flags)))
+// Extended version of ALLOCATE, which accepts a flags argument to be passed to allocate()
+
+#define ZERO_FILL(array_var, len) memset((array_var), 0, sizeof((array_var)[0])*(len))
+// Convenience macro for zero-filling an array.
+
+
+NONSTD_API  char* allocate_sprintf(Arena *a, int *len, const char *fmt, ...);
+// Like `sprintf`, but allocates the string in the arena. The string is null-terminated.
+// Also writes the length of the string (excluding NULL) to the optional len parameter, if provided.
+
+NONSTD_API char *allocate_cstrdup(Arena *a, char *s);
+// Like `strdup` but allocates the string in the arena. The string source and destination are 
+// null-terminated.
+
+NONSTD_API Str allocate_strdup(Arena *a, Str s);
+// Copies a string into the specified arena. Destination is null-terminated.
+
+
+NONSTD_API  Arena malloc_arena(ptrdiff_t cap);
+// Creates a new arena with the given capacity, using malloc to allocate the memory.
+// This function is for convenience and is best used only when the arena will last for the
+// duration of the program. If you need to deallocate the underlying memory, you'll need to 
+// retain a copy of the "start" pointer you get from this function, and pass that to free()
+
+
+
+
+/* 
+   ============================================================================
+		HASH MAPS
+   ============================================================================
+
+   Credit to Chris Wellons (https://nullprogram.com/) and NRK (https://nrk.neocities.org/) 
+   for the hash map design.
+
+*/
+
+
+///////////   HASH MAPS  ////////////
+// 
+// This section offers implementations of a hash map and an ordered hash map which are designed
+// to be used with the Arena allocator. These data structures are not thread safe. Both are "intrusive"
+// in that they require the user to embed the hash map in their own data structure if the user wishes to 
+// store actual values in the hash map. The hash map can be used as a hash set with no need for
+// user-defined structures.
+//
+//   Example usage:
+// 
+//   typedef stuct MyType {
+//       int value;
+//       HashMap hm;
+//   } MyType;
+// 
+//   ...
+// 
+//   HashMap *hm = 0;
+//   MyType *p = hash_map_upsert(&hm, "key", &a, MyType);
+//   p->value = 666;
+//  
+// The ordered hash map is similar, but it also maintains a linked list of all the elements in 
+// reverse-insertion order. 
+
+
+// You can supply your own key type, but if you do so you must also supply a hash function, an equals function,
+// and a function to copy a key into an areana. By default, the key type is a null terminated c-string (char*),
+// and the hash function is FNV-1a.
+#ifndef HASH_MAP_KEY_TYPE
+  #ifndef NONSTD_HASHMAP_POLICY_USE_NONSTD_STR
+    #define HASH_MAP_KEY_TYPE char*
+    #define HASH_MAP_KEY_HASH_FN(k)      nonstd_hashmap_hash_cstr(k)
+    #define HASH_MAP_KEY_EQUALS_FN(a,b)  nonstd_hashmap_equals_cstr(a,b)
+    #define HASH_MAP_KEY_COPY_FN(a, k)   allocate_cstrdup(a, k)
+  #else 
+    #define HASH_MAP_KEY_TYPE Str
+    #define HASH_MAP_KEY_HASH_FN(k)      hash_str_FNV1a(k)
+    #define HASH_MAP_KEY_EQUALS_FN(a,b)  str_equals(a,b)
+    #define HASH_MAP_KEY_COPY_FN(a, k)   allocate_strdup(a, k)
+  #endif 
+#else
+  #ifndef HASH_MAP_KEY_HASH_FN
+    #error "If you're supplying your own HASH_MAP_KEY_TYPE you also must supply a hash function:  uint64_t hashfn(KEY_TYPE k)"
+  #endif
+  #ifndef HASH_MAP_KEY_EQUALS_FN
+    #error "If you're supplying your own HASH_MAP_KEY_TYPE you also must supply your own key comparison function:  int equalsfn(KEY_TYPE a, KEY_TYPE b)"
+  #endif
+  #ifndef HASH_MAP_KEY_COPY_FN
+    #error "If you're supplying your own HASH_MAP_KEY_TYPE you also must supply your own key copy function:  HASH_MAP_KEY cpyfn(Arena a, KEY_TYPE k)"
+  #endif
+#endif
+
+typedef struct HashMap{
+	// Simple intrusive hash map. On it's own, can function as a hash set.
+	struct HashMap *child[4];
+	HASH_MAP_KEY_TYPE key;
+} HashMap;
+
+typedef struct OrderedHashMap{
+	// Simple intrusive ordered hash map (tracks elements in reverse insertion order). 
+	// On it's own, can function as an ordered hash set.
+	struct OrderedHashMap *child[4];
+	struct OrderedHashMap *next;
+	HASH_MAP_KEY_TYPE key;
+} OrderedHashMap;
+
+
+enum {
+	// Flags for the hash map upsert functions
+	HASH_MAP_DUP_KEY = 1, // if an insertion is performed, this flag causes HASH_MAP_KEY_COPY_FN to be called.
+};
+
+NONSTD_API void *hash_map_upsert_general(
+	HashMap **hm, 
+	HASH_MAP_KEY_TYPE key, 
+	Arena *a, 
+	ptrdiff_t offset, 
+	ptrdiff_t size, 
+	ptrdiff_t align, 
+	int flags, 
+	int *insert_count);
+// "Upsert" = update & insert, in one function.
+// If the key is found, the function returns a pointer to the existing element. If the key is not found, 
+// the function allocates a new element in the arena and returns a pointer to it. Since the hash map is 
+// intrusive, the caller must supply the offset of the hash map within the data structure. The size and
+// alignment of the data structure are also required. The flags are optional and can be zero or a bitwise
+// OR of the flags defined above. The last parameter insert_count is optional, but if it's supplied, the
+// referred integer will be incremented if an insertion is performed. 
+// The returned pointer points to the user-defined data structure, not the hash map member within it.
+// 
+// Calling this function can be a bit cumbersome because of the need to supply sizes and alignments. 
+// See the convenience macros below, or, define your own upsert macro along with your data structure. 
+
+#define hash_map_upsert(hm, key, a, Type, member) \
+	hash_map_upsert_general(hm, key, a, (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)_Alignof(Type), 0, 0)
+// Convenience macro: you can supply your data structure type and the name of the HashMap member, 
+// instead of the size, alignment, anf offset.
+// Example:
+//	typedef struct { int value; HashMap hm; } MyType;
+//	MyType *p = hash_map_upsert(&hm, "key", &a, MyType, hm);
+
+#define hash_map_upsert_ex(hm, key, a, Type, member, flags, insert_count) \
+	hash_map_upsert_general(hm, key, a, (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)_Alignof(Type), (flags), (insert_count))
+// Extended version of hash_map_upsert, which accepts a flags argument and an optional insert_count argument.
+
+
+NONSTD_API void *ordered_hash_map_upsert_general(
+	OrderedHashMap **hm,
+	OrderedHashMap **list,
+	HASH_MAP_KEY_TYPE key,
+	Arena *a,
+	ptrdiff_t offset,
+	ptrdiff_t size,
+	ptrdiff_t align,
+	int flags,
+	int *insert_count);
+// This is the analagous upsert function for the ordered hash map. It's used in the same way as the 
+// hash_map_upsert function, only that it also maintains a linked list of all the elements in reverse
+// insertion order. The head of this list is tracked separately, via the list parameter.
+//
+// Again, some convenience macros are defined below, but you may want to define your own upsert macro
+// to go along with your data structure.
+
+#define ordered_hash_map_upsert(hm, list, key, a, Type, member) \
+	ordered_hash_map_upsert_general((hm), (list), (key), (a), (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)_Alignof(Type), 0, 0)		
+// Convenience macro: you can supply your data structure type and the name of the HashMap member,
+// instead of the size, alignment, and offset.
+
+#define ordered_hash_map_upsert_ex(hm, list, key, a, Type, member, flags, insert_count) \
+	ordered_hash_map_upsert_general((hm), (list), (key), (a), (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)_Alignof(Type), (flags), (insert_count))
+// Extended version of ordered_hash_map_upsert, which accepts a flags argument and an optional insert_count argument.
+
+
+NONSTD_API  OrderedHashMap *ordered_hash_map_list_reverse(OrderedHashMap *list);
+// Since the ordered hash map list is in reverse insertion order, 
+// this convenience function reverses the list in place and returns the new head of the list.
+
 
 
 
@@ -981,24 +991,28 @@ NONSTD_API char* allocate_sprintf(Arena *a, int *len, const char *fmt, ...)
         return mem;
 }
 
-NONSTD_API char *allocate_strdup(Arena *a, char *s)
+NONSTD_API char *allocate_cstrdup(Arena *a, char *s)
 {
 	int len = strlen(s);
 	char *p = allocate(a, len+1, 1, 1, 0);
 	return p ? memcpy(p, s, len+1) : 0;
 }
 
+NONSTD_API Str allocate_strdup(Arena *a, Str s)
+{
+	char *p = allocate(a, s.len+1, 1, 1, 0);
+	if(p) {
+		memcpy(p, s.ptr, s.len);
+		return mkstr(p, s.len);
+	}
+	INVALID_CODE_PATH();
+}
+
 // FNV-1a hashing of null-terminated c-strings
 static uint64_t nonstd_hashmap_hash_cstr(char *s)
 {
 	int len = strlen(s);
-        uint64_t h = 0x2b992ddfa23249d6;
-        for(int32_t i = 0; i < len; i++)
-        {
-                h ^= s[i] & 255;
-                h *= 1111111111111111111;
-        }
-        return h ^ h>>32;
+	return hash_cstr_FNV1a(s, len);	
 }
 
 // Returns true if equal, false if not equal
@@ -1854,7 +1868,7 @@ str_split_str(Str* s, Str delim)
 }
 
 NONSTD_API int 
-str_equal(Str a, Str b)
+str_equals(Str a, Str b)
 {
 	if(a.len==b.len) {
 		for(int i = 0; i < a.len; i++)
