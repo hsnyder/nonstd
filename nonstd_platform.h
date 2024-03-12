@@ -2,8 +2,7 @@
 	Harris M. Snyder, 2023
 	This is free and unencumbered software released into the public domain.
 
-	nonstd_base.h is part of 'nonstd': an attempt to supplement the C 
-	standard library. See the comments in `nonstd.h` for an overview.
+	The implementation section of nonstd_platform.h depends on nonstd.h.
 */
 #ifndef NONSTD_PLATFORM_H
 #define NONSTD_PLATFORM_H
@@ -14,7 +13,6 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include <setjmp.h>
 
 /* 
    ============================================================================
@@ -181,145 +179,41 @@ NONSTD_PLATFORM_API void blocking_queue_pop_commit(BlockingConcurrentQueue *q);
 
 /* 
    ============================================================================
-		MEMORY MANAGEMENT
-   ============================================================================
-*/
-NONSTD_PLATFORM_API  void * xmalloc(i64 bytes);
-// calls malloc(), calls die() if malloc() fails
-
-NONSTD_PLATFORM_API  void * xrealloc(void *p, i64 bytes);
-// calls realloc(), calls die() if realloc() fails
-
-NONSTD_PLATFORM_API  i64 get_total_mem_bytes (void);  
-// return total machine memory size in bytes
-
-
-/*
-	Arena object allows you to allocate a bunch of stuff and free it
-	all at once, rather than tracking and freeing each individual array.
-
-	Aligns everything to 64 byte boundaries!
-
-	Use it like:
-
-	Arena arena = {0};
-	while (not_done) 
-	{
-		// call some code path that needs to make many
-		// allocations for scratch memory
-		process_micrograph(&arena, ...);
-
-		// free everything all at once so nothing inside the above code path
-		// needs to worry about freeing.
-		arena_clear(&arena); 
-	}
-
-	NOTE: you don't need to check allocate()'s return value for null, but as a side 
-	effect of that if it runs out of memory it just terminates the program.
-*/
-
-typedef struct {
-	unsigned char *mem;
-	i64 reservation;
-	i64 committed;
-	i64 used;
-	TicketMutex mtx; 
-	jmp_buf *oom_handler; // if you run out of memory, this will be longjmp'd. if null, then die() is called
-} Arena;
-
-NONSTD_PLATFORM_API  void  arena_clear(Arena *a, int reclaim); // deletes everything in the arena but keeps the arena around
-NONSTD_PLATFORM_API  void  arena_destroy(Arena *a); // deletes everything in the arena and destroys the arena
-
-NONSTD_PLATFORM_API  int arena_dump_file(Arena *a, char * filename); // dump contents of arena to a file.
-NONSTD_PLATFORM_API  i64 arena_dump(i64 bufsz, void *buf, Arena *a); // dump contents of arena to a supplied buffer, returns the required size.
-NONSTD_PLATFORM_API  Arena  arena_load_file(char * filename, i64 sz_reserve_extra); // load contents of an arena from a file.
-
-NONSTD_PLATFORM_API  void* allocate(Arena *a, i64 sz); // allocate and zero some memory
-NONSTD_PLATFORM_API  void* allocate_empty(Arena *a, i64 sz); // allocate some uninitialized memory
-NONSTD_PLATFORM_API  void* allocate_named(Arena *a, i64 sz, char *name, int name_len); // allocate and assign a name
-NONSTD_PLATFORM_API  void* allocate_empty_named(Arena *a, i64 sz, char *name, int name_len); // allocate and zero, and assign a name
-									//
-NONSTD_PLATFORM_API  void* allocation_copy(Arena *a, void *src_data); // copies *src_data from another Arena to a
-
-NONSTD_PLATFORM_API  void* allocation_lookup(Arena *a, char *name, int name_len); // finds an allocation by name
-
-NONSTD_PLATFORM_API  int allocation_check_name(void *p, char *name, int name_len); // check that a previous allocation has the specified name
-
-NONSTD_PLATFORM_API  i64 allocation_size(void *p); // gets size of an allocation that was allocated by a Arena
-NONSTD_PLATFORM_API  i64 allocation_capacity(void *p); // gets capacity of an allocation that was allocated by a Arena (may be > size due to alignment padding)
-
-NONSTD_PLATFORM_API  void arena_mem_lock(Arena *a); // locks memory, preventing it from being swapped
-NONSTD_PLATFORM_API  void arena_mem_unlock(Arena *a); // unlocks memory, allowing it to be swapped
-				 
-NONSTD_PLATFORM_API  i64 arena_get_used_memory(Arena *a); // gets the number of bytes in use by the arena
-                                     // exists only b/c python can't easily access the .used struct member
-NONSTD_PLATFORM_API  i64  arena_checkpoint(Arena *a);
-NONSTD_PLATFORM_API  void arena_rollback(Arena *a, i64 checkpoint);
-
-NONSTD_PLATFORM_API  char* allocate_sprintf(Arena *a, char *fmt, ...);
-NONSTD_PLATFORM_API  char* allocate_cstrdup(Arena *a, char *cstr);
-
-#define TALLOC_ALIGN 64
-#define TALLOC_HEADER_MAGIC 0xa110c8ed // "allocated :)"
-typedef struct {
-	i64 sz;
-	i64 cap;
-	u32 magic;
-	i8 name_len;
-	char padding[TALLOC_ALIGN-21];
-	char data[];
-} AllocationHeader;
-_Static_assert(sizeof(AllocationHeader) == TALLOC_ALIGN, "TALLOC_ALIGN value or size of AllocationHeader is wrong");
-
-NONSTD_PLATFORM_API  AllocationHeader * arena_foreach(Arena *a, i64 *state);
-
-NONSTD_PLATFORM_API  void print_allocation_header(AllocationHeader* x) ;
-
-/*
-	
-  	ALLOCATE convenience macro usage:
-
-	    float *my_array = 0;
-	    ALLOCATE(arena, my_array, N*M);
-
-	which is the same as:
-
-	    float *my_array = allocate(arena, N*M*sizeof(*my_array));
-
-	Note the difference: the macro automatically multiplies by the correct type size,
-	allowing you to think in array elements instead of thinking in bytes. 
-
-*/
-
-#define ALLOCATE(arena, array_var, len) array_var = allocate_named((arena), (len)*ssizeof((array_var)[0]), #array_var, 0)
-#define ZERO_FILL(array_var, len) memset((array_var), 0, sizeof((array_var)[0])*(len))
-
-
-/* 
-   ============================================================================
 		I/O
    ============================================================================
 */
 typedef struct {
-	i64 len;
+	int64_t len;
 	void *mem;
 } FileContents;
 
 NONSTD_PLATFORM_API  FileContents platform_read_file(char *filename);
 
-NONSTD_PLATFORM_API  int platform_read_file_into_buffer(i64 buffer_size, void *buffer, i64 *file_size, char *filename);
-NONSTD_PLATFORM_API  int platform_read_file_into_arena(Arena *a, void **file_bytes, i64 *file_size, char *filename);
+NONSTD_PLATFORM_API  int platform_read_file_into_buffer(int64_t buffer_size, void *buffer, int64_t *file_size, char *filename);
 NONSTD_PLATFORM_API  int platform_write_file(char * filename, void *what, size_t bytes);
 
-NONSTD_PLATFORM_API  i64 platform_get_file_size(char *filename);
+NONSTD_PLATFORM_API  int64_t platform_get_file_size(char *filename);
 
 // Writes out the message from errno or GetLastError with a user-provided message prefix
 NONSTD_PLATFORM_API  void errmsg_from_platform(char * prefix);
 
 
+
 /* 
    ============================================================================
-		PLATFORM-SPECIFIC LOW LEVEL MEMORY MANAGEMENT
+		MEMORY MANAGEMENT
+   ============================================================================
+*/
+
+NONSTD_PLATFORM_API  int64_t get_total_mem_bytes (void);  
+// return total machine memory size in bytes
+
+
+
+
+/* 
+   ============================================================================
+		VIRTUAL MEMORY MANAGEMENT
    ============================================================================
 */
 
@@ -350,9 +244,13 @@ NONSTD_PLATFORM_API  int platform_unlock_mem   (void *start, size_t len);
    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 #ifdef NONSTD_PLATFORM_IMPLEMENTATION
+
+#include "nonstd.h"
+
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include <math.h>
 
 
 // Most architectures have special instructions which hint to the CPU that we're in a spin-lock loop.
@@ -497,18 +395,6 @@ static void futex_wake_one(uint32_t *f) { }
 static void futex_wake_all(uint32_t *f) { }
 #endif
 
-
-#ifndef assert
-#  ifdef DISABLE_ASSERTIONS
-#    define assert(c)
-#  elif defined(_MSC_VER)
-#    define assert(c) if(!(c)){__debugbreak();}
-#  elif defined(__GNUC__) || defined(__clang__)
-#    define assert(c) if(!(c)){__builtin_trap();}
-#  else 
-#    define assert(c) if(!(c)){*(volatile int*)0=0;}
-#  endif
-#endif
 
 
 NONSTD_PLATFORM_API void 
@@ -688,8 +574,6 @@ get_wtime(void)
    ........................................
 */
 
-#include <stdio.h>
-#include <stdlib.h>
 
 NONSTD_PLATFORM_API int
 platform_write_file(char * filename, void *what, size_t bytes) 
@@ -710,7 +594,7 @@ platform_write_file(char * filename, void *what, size_t bytes)
 	return 1;
 }
 
-NONSTD_PLATFORM_API i64
+NONSTD_PLATFORM_API int64_t
 platform_get_file_size(char *filename)
 {
 	FILE *f = fopen(filename, "rb");
@@ -731,7 +615,7 @@ platform_get_file_size(char *filename)
 	#define FTELL(x) ftell(x)
 	#endif
 	
-	i64 pos = FTELL(f);
+	int64_t pos = FTELL(f);
 	
 	if(pos == -1L) {
 		errmsg_from_platform("platform_get_file_size: ftell");
@@ -747,7 +631,7 @@ platform_read_file(char *filename)
 	FILE * f = fopen(filename, "rb");
 	if(!f) die("couldn't read %s", filename);
 	fseek(f, 0, SEEK_END);
-	i64 len = FTELL(f);
+	int64_t len = FTELL(f);
 	fseek(f, 0, SEEK_SET);
 	void * mem = malloc(len);
 	if(!mem) die("couldn't allocate %lli bytes", (long long) len);
@@ -761,7 +645,7 @@ platform_read_file(char *filename)
 }
 
 NONSTD_PLATFORM_API int 
-platform_read_file_into_buffer(i64 buffer_size, void *buffer, i64 *file_size, char *filename)
+platform_read_file_into_buffer(int64_t buffer_size, void *buffer, int64_t *file_size, char *filename)
 {
 	FILE *f = fopen(filename, "rb");
 
@@ -775,7 +659,7 @@ platform_read_file_into_buffer(i64 buffer_size, void *buffer, i64 *file_size, ch
 		return 0; 
 	}
 	
-	i64 pos = FTELL(f);
+	int64_t pos = FTELL(f);
 	
 	if(pos == -1L) {
 		errmsg_from_platform("platform_read_file_into_buffer: ftell");
@@ -789,7 +673,7 @@ platform_read_file_into_buffer(i64 buffer_size, void *buffer, i64 *file_size, ch
 	}
 
 	if(*file_size <= buffer_size) {
-		if(*file_size != (i64)fread(buffer, 1, *file_size, f)) {
+		if(*file_size != (int64_t)fread(buffer, 1, *file_size, f)) {
 			errmsg_from_platform("platform_read_file_into_buffer: fread");
 			return 0; 
 		}
@@ -799,122 +683,9 @@ platform_read_file_into_buffer(i64 buffer_size, void *buffer, i64 *file_size, ch
 	return 1;
 }
 
-NONSTD_PLATFORM_API int 
-platform_read_file_into_arena(Arena *a, void **file_bytes, i64 *file_size, char *filename)
-{
-	FILE *f = fopen(filename, "rb");
-
-	if (!f) {
-		errmsg_from_platform("platform_read_file_into_arena: fopen");
-		return 0; 
-	}
-
-	if(fseek(f, 0, SEEK_END)) {
-		errmsg_from_platform("platform_read_file_into_arena: fseek(end)");
-		return 0; 
-	}
-	
-	i64 pos = FTELL(f);
-	
-	if(pos == -1L) {
-		errmsg_from_platform("platform_read_file_into_arena: ftell");
-		return 0; 
-	}
-	*file_size = pos;
-
-	if(fseek(f, 0, SEEK_SET)) {
-		errmsg_from_platform("platform_read_file_into_arena: fseek(start)");
-		return 0; 
-	}
-
-	*file_bytes = allocate(a, *file_size);
-
-	if(*file_size != (i64)fread(*file_bytes, 1, *file_size, f)) {
-		errmsg_from_platform("platform_read_file_into_arena: fread");
-		return 0; 
-	}
-
-	fclose(f);
-	return 1;
-
-}
 
 
 
-///  error messages
-
-
-#include <stdio.h>
-#include <inttypes.h>
-
-#ifndef NONSTD_OVERRIDE_MESSAGE_FUNCTIONS
-	NONSTD_PLATFORM_API void error_message (char * str)
-	{
-		fprintf(stderr, "%s\n", str);
-		fflush(stderr);
-	}
-	NONSTD_PLATFORM_API void warning_message (char * str)
-	{
-		fprintf(stderr, "%s\n", str);
-		fflush(stderr);
-	}
-	NONSTD_PLATFORM_API void info_message (char * str)
-	{
-		fprintf(stdout, "%s\n", str);
-		fflush(stdout);
-	}
-#endif
-
-#include <stdio.h>
-#include <errno.h>
-#include <stdarg.h>
-#include <string.h>
-
-
-NONSTD_PLATFORM_API _Noreturn void 
-#if defined(__clang__) || defined(__GNUC__)
-__attribute__ ((format (printf, 1, 2)))
-#endif
-die (char *fmt, ...)
-{
-	char buf[1000] = {0};
-	memcpy(buf,"DIE: ",5);
-	va_list args;
-	va_start(args, fmt);
-	xvsnprintf(buf+5, sizeof(buf)-5, fmt, args);
-	va_end(args);
-	error_message(buf);
-	exit(EXIT_FAILURE);
-}
-
-NONSTD_PLATFORM_API void 
-#if defined(__clang__) || defined(__GNUC__)
-__attribute__ ((format (printf, 1, 2)))
-#endif
-warn (char *fmt, ...)
-{
-	char buf[1000] = {0};
-	memcpy(buf,"WARNING: ",9);
-	va_list args;
-	va_start(args, fmt);
-	xvsnprintf(buf+9, sizeof(buf)-9, fmt, args);
-	va_end(args);
-	warning_message(buf);
-}
-
-NONSTD_PLATFORM_API void 
-#if defined(__clang__) || defined(__GNUC__)
-__attribute__ ((format (printf, 1, 2)))
-#endif
-logmsg (char *fmt, ...)
-{
-	char buf[1000]  = {0};
-	va_list args;
-	va_start(args, fmt);
-	xvsnprintf(buf, sizeof(buf), fmt, args);
-	va_end(args);
-	info_message(buf);
-}
 
 
 /*
@@ -926,16 +697,16 @@ logmsg (char *fmt, ...)
 #if defined(__linux__)
 #define _GNU_SOURCE
 #include <unistd.h>   // _SC_PAGE_SIZE, etc
-NONSTD_PLATFORM_API i64 platform_get_page_size(void)
+NONSTD_PLATFORM_API int64_t platform_get_page_size(void)
 {
 	return sysconf(_SC_PAGE_SIZE);
 }
 
-NONSTD_PLATFORM_API i64 get_total_mem_bytes (void) 
+NONSTD_PLATFORM_API int64_t get_total_mem_bytes (void) 
 {
 	// Negative return value = error.
-	i64 ps = platform_get_page_size();
-	i64 pp = sysconf(_SC_PHYS_PAGES);
+	int64_t ps = platform_get_page_size();
+	int64_t pp = sysconf(_SC_PHYS_PAGES);
 	return ps*pp;
 }
 #endif
@@ -951,14 +722,13 @@ NONSTD_PLATFORM_API i64 get_total_mem_bytes (void)
 
 #include <sys/mman.h>
 #include <errno.h>
-#include <stdio.h>
 
 NONSTD_PLATFORM_API void 
 errmsg_from_platform(char * prefix) 
 {
 	char msg[128] = {0};
 	int e = errno; 
-	xsnprintf(msg, sizeof(msg), "%s: %s", prefix, strerror(e));
+	snprintf(msg, sizeof(msg), "%s: %s", prefix, strerror(e));
 	error_message(msg);
 }
 
@@ -973,10 +743,10 @@ platform_reserve_mem(size_t size)
 	return p;
 }
 
-static i64 offset_from_prev_page_boundary(void* addr)
+static int64_t offset_from_prev_page_boundary(void* addr)
 {
-	i64 start_of_page = round_down((intptr_t)addr, platform_get_page_size());
-	i64 rtn_val = ((intptr_t)addr) - start_of_page;
+	int64_t start_of_page = round_down((intptr_t)addr, platform_get_page_size());
+	int64_t rtn_val = ((intptr_t)addr) - start_of_page;
 	assert(rtn_val >= 0);
 	return rtn_val;
 }
@@ -985,7 +755,7 @@ static i64 offset_from_prev_page_boundary(void* addr)
 NONSTD_PLATFORM_API int 
 platform_commit_mem(void* start, size_t len)
 {
-	i64 offset = offset_from_prev_page_boundary(start);
+	int64_t offset = offset_from_prev_page_boundary(start);
 	start = ((char*)start)-offset;
 	len += offset;
 
@@ -1000,7 +770,7 @@ platform_commit_mem(void* start, size_t len)
 NONSTD_PLATFORM_API int 
 platform_lock_mem(void *start, size_t len)
 {
-	i64 offset = offset_from_prev_page_boundary(start);
+	int64_t offset = offset_from_prev_page_boundary(start);
 	start = ((char*)start)-offset;
 	len += offset;
 
@@ -1015,7 +785,7 @@ platform_lock_mem(void *start, size_t len)
 NONSTD_PLATFORM_API int 
 platform_unlock_mem(void *start, size_t len)
 {
-	i64 offset = offset_from_prev_page_boundary(start);
+	int64_t offset = offset_from_prev_page_boundary(start);
 	start = ((char*)start)-offset;
 	len += offset;
 
@@ -1030,7 +800,7 @@ platform_unlock_mem(void *start, size_t len)
 NONSTD_PLATFORM_API int
 platform_decommit_mem(void* start, size_t len)
 {
-	i64 offset = offset_from_prev_page_boundary(start);
+	int64_t offset = offset_from_prev_page_boundary(start);
 	start = ((char*)start)-offset;
 	len += offset;
 
@@ -1070,7 +840,7 @@ platform_unreserve_mem(void *start, size_t len)
 #elif defined(_WIN32)
 #include <windows.h>
 
-NONSTD_PLATFORM_API i64 
+NONSTD_PLATFORM_API int64_t 
 platform_get_page_size(void)
 {
 	SYSTEM_INFO si = {0};
@@ -1078,7 +848,7 @@ platform_get_page_size(void)
 	return si.dwAllocationGranularity;
 }
 
-NONSTD_PLATFORM_API i64 
+NONSTD_PLATFORM_API int64_t 
 get_total_mem_bytes (void) 
 {
 	// Negative return value = error.
@@ -1095,7 +865,7 @@ errmsg_from_platform(char * prefix) {
 	char msg[256] = {0};
 	unsigned e = GetLastError(); 
 	
-	xsnprintf(msg, sizeof(msg), "%s: win32 error code %u (0x%x)", prefix, e, e);
+	snprintf(msg, sizeof(msg), "%s: win32 error code %u (0x%x)", prefix, e, e);
 	error_message(msg);
 }
 
@@ -1164,366 +934,6 @@ platform_unreserve_mem(void *start, size_t len)
 
 // end of windows OS-specific code
 #endif
-
-/* 
-   ........................................
-		OS AGNOSTIC
-   ........................................
-*/
-
-#include <stdlib.h>
-#include <string.h>
-#include <limits.h>
-#include <stdarg.h>
-#include <float.h>
-#include <limits.h>
-
-#include <math.h>
-
-
-NONSTD_PLATFORM_API void * 
-xmalloc(i64 bytes) 
-{
-	void *p = malloc(bytes);
-	if(!p) die("xmalloc failed to allocate %lli bytes", (long long) bytes);
-	memset(p,0,bytes);
-	return p;
-}
-
-NONSTD_PLATFORM_API void * 
-xrealloc(void *p, i64 bytes)
-{
-	p = realloc(p,bytes);
-	if(!p) die("xrealloc failed to allocate %lli bytes", (long long) bytes);
-	return p;
-}
-
-
-static AllocationHeader * 
-get_header(void *p) {
-	char *x = p;
-	AllocationHeader *h = (AllocationHeader*) (x - offsetof(AllocationHeader, data));
-	assert(h->magic == TALLOC_HEADER_MAGIC);
-	return h;
-}
-
-NONSTD_PLATFORM_API int 
-allocation_check_name(void *p, char *name, int name_len)
-{
-	AllocationHeader *h = get_header(p);
-	assert(name_len < (i64)sizeof(h->padding));
-	return name_len == h->name_len && 0 == memcmp(name,h->padding,name_len);
-}
-
-
-NONSTD_PLATFORM_API i64 
-arena_get_used_memory(Arena *a)
-{
-	return a->used;
-}
-					    
-NONSTD_PLATFORM_API i64 
-allocation_size(void *p)
-{
-	return get_header(p)->sz;
-}
-
-NONSTD_PLATFORM_API i64 
-allocation_capacity(void *p)
-{
-	return get_header(p)->cap;
-}
-
-NONSTD_PLATFORM_API i64 
-arena_checkpoint(Arena *a)
-{
-	return a->used;
-}
-
-NONSTD_PLATFORM_API void 
-arena_rollback(Arena *a, i64 checkpoint)
-{
-	assert(checkpoint <= a->used);
-	ticket_mutex_lock(&a->mtx);
-	a->used = checkpoint;
-	ticket_mutex_unlock(&a->mtx);
-}
-
-static void* 
-allocate_named_ (Arena *a, i64 sz_, char *name, int name_len) 
-{
-	i64 cap_for_header = round_up((i64)sz_, TALLOC_ALIGN);
-	i64 sz = cap_for_header + sizeof(AllocationHeader);
-
-	if(name_len == 0 && name != 0) name_len = strlen(name);
-
-	static AllocationHeader AllocationHeader_dummy = {0};
-	assert(name_len <= (i64)sizeof(AllocationHeader_dummy.padding));
-
-	ticket_mutex_lock(&a->mtx);
-
-	if(a->reservation == 0) a->reservation = GIGABYTES(20);
-
-	if(!a->mem) {
-		void *p = platform_reserve_mem(a->reservation);
-		if(!p) die("Couldn't reserve %" PRIi64 " B of virtual memory", a->reservation);
-		assert((intptr_t)p % TALLOC_ALIGN == 0); // TODO make this better
-		a->mem = p;
-	}
-
-	if(a->used + sz > a->reservation) {
-		if(a->oom_handler) longjmp(a->oom_handler[0],1); 
-		die("allocate: out of memory (reservation insufficient)"); 
-	}
-
-	if(a->used + sz > a->committed) {
-		// commit more memory
-		i64 needed_amount = a->used + sz - a->committed;
-		assert(platform_commit_mem(a->mem + a->committed, needed_amount));
-		a->committed += needed_amount;
-	}
-
-	AllocationHeader *new_alloc = (AllocationHeader*)(a->mem + a->used);
-	a->used += sz;
-
-	new_alloc->sz    = sz_;
-	new_alloc->cap   = cap_for_header;
-	new_alloc->magic = TALLOC_HEADER_MAGIC;
-	new_alloc->name_len = name_len;
-	memcpy(new_alloc->padding, name, name_len);
-
-	void *rtn = &new_alloc->data;
-	assert((intptr_t)rtn % TALLOC_ALIGN == 0);
-
-	ticket_mutex_unlock(&a->mtx);
-	return rtn;
-}
-
-NONSTD_PLATFORM_API void* 
-allocate_named  (Arena *a, i64 sz_, char *name, int name_len) 
-{
-	// zeros memory
-	void *mem = allocate_named_(a, sz_, name, name_len);
-	memset(mem,0,sz_);
-	return mem;
-}
-
-NONSTD_PLATFORM_API void* 
-allocate (Arena *a, i64 sz_) 
-{
-	// zeros memory
-	return allocate_named(a,sz_,0,0);
-}
-
-
-NONSTD_PLATFORM_API void* 
-allocate_empty(Arena *a, i64 sz_) 
-{
-	// leaves memory uninitialized
-	return allocate_named_(a,sz_,0,0);
-}
-
-NONSTD_PLATFORM_API void* 
-allocate_empty_named  (Arena *a, i64 sz_, char *name, int name_len) 
-{
-	// leaves memory uninitialized
-	return allocate_named_(a, sz_, name, name_len);
-}
-
-
-
-NONSTD_PLATFORM_API void 
-arena_clear(Arena *a, int reclaim)
-{
-	// note to editors: make sure this always works on zero-initialized arenas (={0})
-	ticket_mutex_lock(&a->mtx);
-	if (reclaim && a->mem) {
-		assert(platform_decommit_mem(a->mem, a->committed));
-		a->committed = 0;
-	}
-	a->used = 0;
-	ticket_mutex_unlock(&a->mtx);
-}
-
-NONSTD_PLATFORM_API void 
-arena_destroy(Arena *a)
-{
-	ticket_mutex_lock(&a->mtx);
-	if (a->mem) {
-		assert(platform_decommit_mem(a->mem, a->committed));
-		assert(platform_unreserve_mem(a->mem, a->reservation));
-	}
-	TicketMutex m = a->mtx;
-	*a = (Arena) {.mtx = m,};
-	ticket_mutex_unlock(&a->mtx);
-}
-
-NONSTD_PLATFORM_API int 
-arena_dump_file(Arena *a, char * filename) 
-{
-	return platform_write_file(filename, a->mem, a->used);
-}
-
-
-NONSTD_PLATFORM_API i64 
-arena_dump(i64 bufsz, void *buf, Arena *a)
-{
-	i64 cpysz = bufsz < a->used  ?  bufsz  :  a->used;
-	assert(cpysz==0 || a->mem);
-	memcpy(buf, a->mem, cpysz);
-	return a->used;
-}
-
-NONSTD_PLATFORM_API Arena 
-arena_load_file(char * filename, i64 sz_reserve_extra)
-{
-	i64 sz = 0;
-	if(!platform_read_file_into_buffer(0, 0, &sz, filename)) die("Failed to read %s", filename);
-
-	Arena a = {.reservation=sz+sz_reserve_extra};
-	void *p = platform_reserve_mem(a.reservation);
-
-	if(!p) die("Couldn't reserve %" PRIi64 " B of virtual memory", a.reservation);
-	assert((intptr_t)p % TALLOC_ALIGN == 0); // TODO make this better
-	a.mem = p;
-
-	assert(platform_commit_mem(a.mem, sz));
-	a.committed = sz;
-
-	if(!platform_read_file_into_buffer(sz, a.mem, &sz, filename)) die("Failed to read %s", filename);
-	a.used = sz;
-
-	return a;
-}
-
-
-
-NONSTD_PLATFORM_API void *
-allocation_copy(Arena *a, void *src_data)
-{
-	AllocationHeader *src_hdr = get_header(src_data);
-
-	void * dst_data = allocate(a, src_hdr->sz);
-	AllocationHeader *dst_hdr = get_header(dst_data);
-
-	memcpy(dst_hdr, src_hdr, sizeof(*dst_hdr));
-	memcpy(dst_data, src_data, src_hdr->sz);
-
-	return dst_data;
-}
-
-NONSTD_PLATFORM_API void 
-arena_mem_lock(Arena *a)
-{
-	assert(platform_lock_mem(a->mem, a->used));
-}
-
-NONSTD_PLATFORM_API void 
-arena_mem_unlock(Arena *a)
-{
-	assert(platform_unlock_mem(a->mem, a->used));
-}
-
-
-NONSTD_PLATFORM_API void *
-allocation_lookup(Arena *a, char *name, int name_len)
-{
-	assert(name);
-	if(name_len == 0 && name != 0) name_len = strlen(name);
-
-	static AllocationHeader AllocationHeader_dummy = {0};
-	assert(name_len <= (i64)sizeof(AllocationHeader_dummy.padding));
-
-	// for now, easy but garbage search, can improve later with a hash table.
-	i64 offset = 0;
-	while (offset < a->used)
-	{
-		AllocationHeader *h = (void*)(a->mem + offset);
-		if(name_len == h->name_len && 0 == memcmp(name, h->padding, name_len)) {
-			return h->data;
-		}	
-		offset += sizeof(AllocationHeader) + h->cap;
-	}
-	return 0;
-}
-
-NONSTD_PLATFORM_API char* 
-allocate_sprintf(Arena *a, char *fmt, ...)
-{
-	va_list args1, args2;
-	va_start(args1, fmt);
-	va_copy(args2, args1);
-	int n = 1 + xvsnprintf(0, 0, fmt, args1);
-	char *mem = allocate(a, n);
-	xvsnprintf(mem, n, fmt, args2);
-	va_end(args1);
-	va_end(args2);
-	return mem;
-}
-
-NONSTD_PLATFORM_API char* 
-allocate_cstrdup(Arena *a, char *cstr)
-{
-        if(!string) return 0;
-        int len = strlen(string);
-        char *mem = allocate(a, len+1);
-        memcpy(mem, string, len);
-        return mem;
-}
-
-NONSTD_PLATFORM_API AllocationHeader * 
-arena_foreach(Arena *a, i64 *state)
-{
-	assert(*state > -1 && *state <= a->used);
-	if (*state == a->used) return 0;
-	AllocationHeader *h = (AllocationHeader*) (a->mem + *state);
-	assert(h->magic == TALLOC_HEADER_MAGIC);
-	*state += h->cap + sizeof(*h);
-	return h;
-}
-
-
-NONSTD_PLATFORM_API int 
-fmt_mem_quantity(i64 sz, char * buf, i64 quantity, int print_if_small) 
-{
-	if (quantity >= GIGABYTES(1024)) 
-		return xsnprintf(buf, sz, "%.3f TiB", ((double)quantity) / GIGABYTES(1024));
-	else if (quantity >= GIGABYTES(1)) 
-		return xsnprintf(buf, sz, "%.3f GiB", ((double)quantity) / GIGABYTES(1));
-	else if (quantity >= MEGABYTES(1)) 
-		return xsnprintf(buf, sz, "%.3f MiB", ((double)quantity) / MEGABYTES(1));
-	else if (quantity >= KILOBYTES(1)) 
-		return xsnprintf(buf, sz, "%.3f KiB", ((double)quantity) / KILOBYTES(1));
-	else if (print_if_small)
-		return xsnprintf(buf, sz, "%"PRIi64" B", quantity);
-	else return 0;
-}
-
-NONSTD_PLATFORM_API void 
-print_allocation_header(AllocationHeader* x) 
-{
-	char name_buf[100] = {0};
-	if (x->name_len > 0) 
-		memcpy(name_buf, x->padding, x->name_len);
-	else 
-		memcpy(name_buf, "[NO NAME]", 9);
-
-	printf("%s\n\t", name_buf);
-
-	char szbuf[100] = {0};
-	printf("sz:  %" PRIi64 " ", x->sz);
-	fmt_mem_quantity(100, szbuf, x->sz, 0);
-	printf("%s\n\t", szbuf);
-
-	printf("cap: %" PRIi64 " ", x->cap);
-	fmt_mem_quantity(100, szbuf, x->cap, 0);
-	printf("%s\n\t", szbuf);
-
-	printf("magic: %x\n\tname_len: %"PRIi8"\n\tpadding:", x->magic, x->name_len);
-	for(int i = 0; i < COUNT_ARRAY(x->padding); i++) printf(" %.2hhx", x->padding[i]);
-	printf("\n");
-	fflush(stdout);
-}
 
 
 #endif

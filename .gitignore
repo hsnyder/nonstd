@@ -1,2 +1,3 @@
 a.out
-tests/
+test*.c
+wip.h

@@ -16,7 +16,6 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include <setjmp.h>
 
 /* 
    ============================================================================
@@ -263,14 +262,27 @@ NONSTD_API  void info_message    (char * str);
 
 /* 
    ============================================================================
+		LAZY MEMORY MANAGEMENT
+   ============================================================================
+*/
+NONSTD_PLATFORM_API  void * xmalloc(i64 bytes);
+// calls malloc(), calls die() if malloc() fails
+
+NONSTD_PLATFORM_API  void * xrealloc(void *p, i64 bytes);
+// calls realloc(), calls die() if realloc() fails
+
+NONSTD_PLATFORM_API  i64 get_total_mem_bytes (void);  
+// return total machine memory size in bytes
+
+
+
+/* 
+   ============================================================================
 		ARENA MEMORY MANAGEMENT
    ============================================================================
 
    Some ideas drawn from Chris Wellons's excellent blog (https://nullprogram.com/) 
 */
-
-#include <stddef.h>
-#include <stdint.h>
 
 typedef struct {
 	// A simple arena type. The caller is responsible for actually allocating the underlying memory
@@ -288,13 +300,13 @@ enum {
 	ALLOC_SOFT_FAIL = 1<<1, // Don't abort if the allocation fails, just return 0
 };
 
-NONSTD_API  void *alloc(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t count, int flags);
+NONSTD_API  void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t count, int flags);
 // Allocates memory in the arena. Supply the size and alignment of the type you're allocating.
 // If you're allocating an array, supply the number of elements in `count` (otherwise, pass 1). 
 // The flags are optional and can be zero or a bitwise or of the flags defined above.
 
 #define ALLOCATE(a, var, count) \
-	((var) = alloc((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)_Alignof((var)[0]), (count), 0))
+	((var) = allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)_Alignof((var)[0]), (count), 0))
 // Convenience macro for allocating an array in an arena.
 // You can of course pass 1 for the count if you just want a single object.
 // Examples:
@@ -306,7 +318,20 @@ NONSTD_API  void *alloc(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t cou
 
 #define ALLOCATE_EX(a, var, count, flags) \
 	((var) = alloc((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)_Alignof((var)[0]), (count), (flags)))
-// Extended version of ALLOCATE, which accepts a flags argument to be passed to alloc()
+// Extended version of ALLOCATE, which accepts a flags argument to be passed to allocate()
+
+#define ZERO_FILL(array_var, len) memset((array_var), 0, sizeof((array_var)[0])*(len))
+// Convenience macro for zero-filling an array.
+
+
+NONSTD_API  char* allocate_sprintf(Arena *a, int *len, const char *fmt, ...);
+// Like `sprintf`, but allocates the string in the arena. The string is null-terminated.
+// Also writes the length of the string (excluding NULL) to the optional len parameter, if provided.
+
+NONSTD_API char *allocate_strdup(Arena *a, char *s);
+// Like `strdup` but allocates the string in the arena. The string source and destination are 
+// null-terminated.
+
 
 
 NONSTD_API  Arena malloc_arena(ptrdiff_t cap);
@@ -316,13 +341,6 @@ NONSTD_API  Arena malloc_arena(ptrdiff_t cap);
 // retain a copy of the "start" pointer you get from this function, and pass that to free()
 
 
-NONSTD_API  char* arena_sprintf(Arena *a, int *len, const char *fmt, ...);
-// Like `sprintf`, but allocates the string in the arena. The string is null-terminated.
-// Also writes the length of the string (excluding NULL) to the optional len parameter, if provided.
-
-NONSTD_API char *arena_strdup(Arena *a, char *s);
-// Like `strdup` but allocates the string in the arena. The string source and destination are 
-// null-terminated.
 
 
 /* 
@@ -369,7 +387,7 @@ NONSTD_API char *arena_strdup(Arena *a, char *s);
   #define HASH_MAP_KEY_TYPE char*
   #define HASH_MAP_KEY_HASH_FN(k)      nonstd_hashmap_hash_cstr(k)
   #define HASH_MAP_KEY_EQUALS_FN(a,b)  nonstd_hashmap_equals_cstr(a,b)
-  #define HASH_MAP_KEY_COPY_FN(a, k)   arena_strdup(a, k)
+  #define HASH_MAP_KEY_COPY_FN(a, k)   allocate_strdup(a, k)
 #else
   #ifndef HASH_MAP_KEY_HASH_FN
     #error "If you're supplying your own HASH_MAP_KEY_TYPE you also must supply a hash function:  uint64_t hashfn(KEY_TYPE k)"
@@ -715,6 +733,13 @@ NONSTD_API int str_pattern_match(Str *match, Str *string, CompiledStrPattern *pr
 */
 #ifdef NONSTD_IMPLEMENTATION
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <limits.h>
+#include <inttypes.h>
+#include <errno.h>
+#include <stdarg.h>
 
 NONSTD_API int32_t 
 msi_ht_lookup(uint64_t hash, int exp, int32_t idx)
@@ -751,9 +776,6 @@ hash_u64(uint64_t x)
 	memcpy(s,&x,sizeof(x));
 	return hash_cstr_FNV1a(s,sizeof(x));
 }
-
-#include <limits.h>
-#include <math.h>
 
 NONSTD_API uint32_t 
 rand_pcg32 (uint64_t state[static 1])
@@ -820,23 +842,8 @@ bubblesort_step (BubbleSort *state, int N)
 
 
 
-// marginally-documented feature - supply your own printf implementation!
-// but I'm not sure there are actually used everywhere yet
-#ifndef xsnprintf
-#define xsnprintf(...) snprintf(__VA_ARGS__)
-#endif
-#ifndef xvsnprintf
-#define xvsnprintf(...) vsnprintf(__VA_ARGS__)
-#endif 
-
-
-
-
 ///  error messages
 
-
-#include <stdio.h>
-#include <inttypes.h>
 
 #ifndef NONSTD_OVERRIDE_MESSAGE_FUNCTIONS
 	NONSTD_API void error_message (char * str)
@@ -856,10 +863,6 @@ bubblesort_step (BubbleSort *state, int N)
 	}
 #endif
 
-#include <stdio.h>
-#include <errno.h>
-#include <stdarg.h>
-#include <string.h>
 
 
 NONSTD_API _Noreturn void 
@@ -872,7 +875,7 @@ die (char *fmt, ...)
 	memcpy(buf,"DIE: ",5);
 	va_list args;
 	va_start(args, fmt);
-	xvsnprintf(buf+5, sizeof(buf)-5, fmt, args);
+	vsnprintf(buf+5, sizeof(buf)-5, fmt, args);
 	va_end(args);
 	error_message(buf);
 	exit(EXIT_FAILURE);
@@ -888,7 +891,7 @@ warn (char *fmt, ...)
 	memcpy(buf,"WARNING: ",9);
 	va_list args;
 	va_start(args, fmt);
-	xvsnprintf(buf+9, sizeof(buf)-9, fmt, args);
+	vsnprintf(buf+9, sizeof(buf)-9, fmt, args);
 	va_end(args);
 	warning_message(buf);
 }
@@ -902,7 +905,7 @@ logmsg (char *fmt, ...)
 	char buf[1000]  = {0};
 	va_list args;
 	va_start(args, fmt);
-	xvsnprintf(buf, sizeof(buf), fmt, args);
+	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 	info_message(buf);
 }
@@ -911,10 +914,23 @@ logmsg (char *fmt, ...)
 
 
 
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdarg.h>
+NONSTD_API void * 
+xmalloc(i64 bytes) 
+{
+	void *p = malloc(bytes);
+	if(!p) die("xmalloc failed to allocate %lli bytes", (long long) bytes);
+	memset(p,0,bytes);
+	return p;
+}
+
+NONSTD_API void * 
+xrealloc(void *p, i64 bytes)
+{
+	p = realloc(p,bytes);
+	if(!p) die("xrealloc failed to allocate %lli bytes", (long long) bytes);
+	return p;
+}
+
 
 NONSTD_API Arena malloc_arena(ptrdiff_t cap)
 {
@@ -924,7 +940,7 @@ NONSTD_API Arena malloc_arena(ptrdiff_t cap)
 	return a;
 }
 
-NONSTD_API void *alloc(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t count, int flags)
+NONSTD_API void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t count, int flags)
 {
 	ptrdiff_t padding = -(uintptr_t)a->start & (align - 1);
 	ptrdiff_t available = a->one_past_end - a->start - padding;
@@ -941,7 +957,7 @@ NONSTD_API void *alloc(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t coun
 	else return memset(p, 0, count*size);
 }
 
-NONSTD_API char* arena_sprintf(Arena *a, int *len, const char *fmt, ...)
+NONSTD_API char* allocate_sprintf(Arena *a, int *len, const char *fmt, ...)
 {
         va_list args1, args2;
         va_start(args1, fmt);
@@ -956,10 +972,10 @@ NONSTD_API char* arena_sprintf(Arena *a, int *len, const char *fmt, ...)
         return mem;
 }
 
-NONSTD_API char *arena_strdup(Arena *a, char *s)
+NONSTD_API char *allocate_strdup(Arena *a, char *s)
 {
 	int len = strlen(s);
-	char *p = alloc(a, len+1, 1, 1, 0);
+	char *p = allocate(a, len+1, 1, 1, 0);
 	return p ? memcpy(p, s, len+1) : 0;
 }
 
@@ -1001,7 +1017,7 @@ NONSTD_API void *hash_map_upsert_general(
 
 	if (!a) return 0;
 
-	*hm = (void*) ((char*)alloc(a, size, align, 1, 0) + offset);
+	*hm = (void*) ((char*)allocate(a, size, align, 1, 0) + offset);
 
 	if(insert_count) insert_count[0]++;
 
@@ -1034,7 +1050,7 @@ NONSTD_API void *ordered_hash_map_upsert_general(OrderedHashMap **hm,
 
 	if (!a) return 0;
 
-	*hm = (void*) ((char*)alloc(a, size, align, 1, 0) + offset);
+	*hm = (void*) ((char*)allocate(a, size, align, 1, 0) + offset);
 	if(list) {
 		(*hm)->next = *list;
 		*list = *hm;
@@ -1889,7 +1905,6 @@ str_endswith(Str s, Str endswith)
 }
 
 #ifdef NONSTD_DEBUG
-#include <stdio.h>
 NONSTD_API int
 debug_dump_program(char *buffer, int buffer_len, CompiledStrPattern *p)
 {
