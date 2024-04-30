@@ -592,12 +592,12 @@ platform_write_file(char * filename, void *what, size_t bytes)
 	FILE *f = fopen(filename, "wb");
 
 	if (!f) {
-		errmsg_from_platform("platform_write_file: fopen");
+		errmsg_from_platform((char*)"platform_write_file: fopen");
 		return 0; 
 	}
 
 	if(bytes != fwrite(what, 1, bytes, f)) {
-		errmsg_from_platform("platform_write_file: fwrite");
+		errmsg_from_platform((char*)"platform_write_file: fwrite");
 		return 0; 
 	}
 
@@ -611,12 +611,12 @@ platform_get_file_size(char *filename)
 	FILE *f = fopen(filename, "rb");
 
 	if (!f) {
-		errmsg_from_platform("platform_get_file_size: fopen");
+		errmsg_from_platform((char*)"platform_get_file_size: fopen");
 		return 0; 
 	}
 
 	if(fseek(f, 0, SEEK_END)) {
-		errmsg_from_platform("platform_get_file_size: fseek(end)");
+		errmsg_from_platform((char*)"platform_get_file_size: fseek(end)");
 		return 0; 
 	}
 	
@@ -629,7 +629,7 @@ platform_get_file_size(char *filename)
 	int64_t pos = FTELL(f);
 	
 	if(pos == -1L) {
-		errmsg_from_platform("platform_get_file_size: ftell");
+		errmsg_from_platform((char*)"platform_get_file_size: ftell");
 		return 0; 
 	}
 
@@ -640,12 +640,12 @@ NONSTD_PLATFORM_API FileContents
 platform_read_file(char *filename)
 {
 	FILE * f = fopen(filename, "rb");
-	if(!f) die("couldn't read %s", filename);
+	if(!f) die((char*)"couldn't read %s", filename);
 	fseek(f, 0, SEEK_END);
 	int64_t len = FTELL(f);
 	fseek(f, 0, SEEK_SET);
 	void * mem = malloc(len);
-	if(!mem) die("couldn't allocate %lli bytes", (long long) len);
+	if(!mem) die((char*)"couldn't allocate %lli bytes", (long long) len);
 	fread(mem, 1, len, f);
 	fclose(f);
 
@@ -661,31 +661,31 @@ platform_read_file_into_buffer(int64_t buffer_size, void *buffer, int64_t *file_
 	FILE *f = fopen(filename, "rb");
 
 	if (!f) {
-		errmsg_from_platform("platform_read_file_into_buffer: fopen");
+		errmsg_from_platform((char*)"platform_read_file_into_buffer: fopen");
 		return 0; 
 	}
 
 	if(fseek(f, 0, SEEK_END)) {
-		errmsg_from_platform("platform_read_file_into_buffer: fseek(end)");
+		errmsg_from_platform((char*)"platform_read_file_into_buffer: fseek(end)");
 		return 0; 
 	}
 	
 	int64_t pos = FTELL(f);
 	
 	if(pos == -1L) {
-		errmsg_from_platform("platform_read_file_into_buffer: ftell");
+		errmsg_from_platform((char*)"platform_read_file_into_buffer: ftell");
 		return 0; 
 	}
 	*file_size = pos;
 
 	if(fseek(f, 0, SEEK_SET)) {
-		errmsg_from_platform("platform_read_file_into_buffer: fseek(start)");
+		errmsg_from_platform((char*)"platform_read_file_into_buffer: fseek(start)");
 		return 0; 
 	}
 
 	if(*file_size <= buffer_size) {
 		if(*file_size != (int64_t)fread(buffer, 1, *file_size, f)) {
-			errmsg_from_platform("platform_read_file_into_buffer: fread");
+			errmsg_from_platform((char*)"platform_read_file_into_buffer: fread");
 			return 0; 
 		}
 	}
@@ -706,7 +706,9 @@ platform_read_file_into_buffer(int64_t buffer_size, void *buffer, int64_t *file_
 */
 
 #if defined(__linux__)
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <unistd.h>   // _SC_PAGE_SIZE, etc
 NONSTD_PLATFORM_API int64_t platform_get_page_size(void)
 {
@@ -748,7 +750,7 @@ platform_reserve_mem(size_t size)
 {
 	void* p = mmap(0, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
 	if(p == MAP_FAILED) {
-		errmsg_from_platform("platform_reserve_mem: mmap");
+		errmsg_from_platform((char*)"platform_reserve_mem: mmap");
 		return 0;
 	}
 	return p;
@@ -772,7 +774,7 @@ platform_commit_mem(void* start, size_t len)
 
 	int rc = mprotect(start, len, PROT_READ | PROT_WRITE);
 	if(rc != 0) {
-		errmsg_from_platform("platform_commit_mem: mprotect");
+		errmsg_from_platform((char*)"platform_commit_mem: mprotect");
 		return 0;
 	}
 	return 1;
@@ -787,7 +789,7 @@ platform_lock_mem(void *start, size_t len)
 
 	int rc = mlock(start, len);
 	if(rc != 0) {
-		errmsg_from_platform("platform_lock_mem: mlock");
+		errmsg_from_platform((char*)"platform_lock_mem: mlock");
 		return 0;
 	}
 	return 1;
@@ -802,7 +804,7 @@ platform_unlock_mem(void *start, size_t len)
 
 	int rc = munlock(start, len);
 	if(rc != 0) {
-		errmsg_from_platform("platform_unlock_mem: munlock");
+		errmsg_from_platform((char*)"platform_unlock_mem: munlock");
 		return 0;
 	}
 	return 1;
@@ -817,13 +819,13 @@ platform_decommit_mem(void* start, size_t len)
 
 	int rc = mprotect(start, len, PROT_NONE);
 	if(rc != 0) {
-		errmsg_from_platform("platform_decommit_mem: mprotect");
+		errmsg_from_platform((char*)"platform_decommit_mem: mprotect");
 		return 0;
 	}
 
 	rc = madvise(start, len, MADV_DONTNEED);
 	if(rc != 0) {
-		errmsg_from_platform("platform_decommit_mem: madvise");
+		errmsg_from_platform((char*)"platform_decommit_mem: madvise");
 		return 0;
 	}
 	return 1;
@@ -834,7 +836,7 @@ platform_unreserve_mem(void *start, size_t len)
 {
 	int rc = munmap(start,len);
 	if(rc != 0) {
-		errmsg_from_platform("platform_unreserve_mem: munmap");
+		errmsg_from_platform((char*)"platform_unreserve_mem: munmap");
 		return 0;
 	}
 	return 1;

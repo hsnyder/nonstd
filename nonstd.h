@@ -25,7 +25,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
-
+#include <stdalign.h>
 /* 
    ============================================================================
 		TYPEDEFS AND ASSORTED CONVENIENCE MACROS/FUNCTIONS
@@ -137,15 +137,15 @@ partition64 (i64 N, i64 P, i64 i)
 		RANDOM NUMBERS
    ============================================================================
 */
-NONSTD_API uint32_t rand_pcg32 (uint64_t state[static 1]); 
+NONSTD_API uint32_t rand_pcg32 (uint64_t state[1]); 
 // Generate a random uint32, uniform distribution. 
 // Permuted congruential generator (32-bit)
 									       
-NONSTD_API float randn_pcg32 (uint64_t state[static 1]);
+NONSTD_API float randn_pcg32 (uint64_t state[1]);
 // Generate a random float, normal distribution. 
 // Permuted congruential generator (32-bit)
 
-NONSTD_API float randp_pcg32 (uint64_t state[static 1], float lambda);
+NONSTD_API float randp_pcg32 (uint64_t state[1], float lambda);
 // Generate a random float, poisson distribution. 
 // Permuted congruential generator (32-bit)
 
@@ -181,7 +181,7 @@ typedef struct {
 	int b;
 	int swap;
 
-	int private[2];
+	int priv[2];
 
 } BubbleSort;
 
@@ -245,6 +245,9 @@ int main(void)
 	- all three append a newline.
 */
 
+#ifdef __cplusplus
+#define _Noreturn [[noreturn]]
+#endif
 
 NONSTD_API _Noreturn void 
 #if defined(__clang__) || defined(__GNUC__)
@@ -544,20 +547,29 @@ NONSTD_API  void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t 
 // If you're allocating an array, supply the number of elements in `count` (otherwise, pass 1). 
 // The flags are optional and can be zero or a bitwise or of the flags defined above.
 
-#define ALLOCATE(a, var, count) \
-	((var) = allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)_Alignof((var)[0]), (count), 0))
-// Convenience macro for allocating an array in an arena.
-// You can of course pass 1 for the count if you just want a single object.
-// Examples:
-//
-//	    float *my_array = 0;
-//	    ALLOCATE(&arena, my_array, N*M);
-//
-//	    float *other_array = ALLOCATE(&arena, other_array, N*M);
+#ifndef __cplusplus // because C++ doesn't like automatic conversions from void*
 
-#define ALLOCATE_EX(a, var, count, flags) \
-	((var) = alloc((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)_Alignof((var)[0]), (count), (flags)))
-// Extended version of ALLOCATE, which accepts a flags argument to be passed to allocate()
+	#define ALLOCATE(a, var, count) \
+		((var) = allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)alignof((var)[0]), (count), 0))
+	// Convenience macro for allocating an array in an arena.
+	// You can of course pass 1 for the count if you just want a single object.
+	// Examples:
+	//
+	//	    float *my_array = 0;
+	//	    ALLOCATE(&arena, my_array, N*M);
+	//
+	//	    float *other_array = ALLOCATE(&arena, other_array, N*M);
+
+	#define ALLOCATE_EX(a, var, count, flags) \
+		((var) = allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)alignof((var)[0]), (count), (flags)))
+	// Extended version of ALLOCATE, which accepts a flags argument to be passed to allocate()
+
+#else  // C++ versions of the above
+	#define ALLOCATE(a, var, count) \
+		((var) = (decltype(var))allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)alignof((var)[0]), (count), 0))
+	#define ALLOCATE_EX(a, var, count, flags) \
+		((var) = (decltype(var))allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)alignof((var)[0]), (count), (flags)))
+#endif
 
 #define ZERO_FILL(array_var, len) memset((array_var), 0, sizeof((array_var)[0])*(len))
 // Convenience macro for zero-filling an array.
@@ -689,7 +701,7 @@ NONSTD_API void *hash_map_upsert_general(
 // See the convenience macros below, or, define your own upsert macro along with your data structure. 
 
 #define hash_map_upsert(hm, key, a, Type, member) \
-	hash_map_upsert_general(hm, key, a, (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)_Alignof(Type), 0, 0)
+	hash_map_upsert_general(hm, key, a, (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)alignof(Type), 0, 0)
 // Convenience macro: you can supply your data structure type and the name of the HashMap member, 
 // instead of the size, alignment, anf offset.
 // Example:
@@ -697,7 +709,7 @@ NONSTD_API void *hash_map_upsert_general(
 //	MyType *p = hash_map_upsert(&hm, "key", &a, MyType, hm);
 
 #define hash_map_upsert_ex(hm, key, a, Type, member, flags, insert_count) \
-	hash_map_upsert_general(hm, key, a, (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)_Alignof(Type), (flags), (insert_count))
+	hash_map_upsert_general(hm, key, a, (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)alignof(Type), (flags), (insert_count))
 // Extended version of hash_map_upsert, which accepts a flags argument and an optional insert_count argument.
 
 
@@ -719,12 +731,12 @@ NONSTD_API void *ordered_hash_map_upsert_general(
 // to go along with your data structure.
 
 #define ordered_hash_map_upsert(hm, list, key, a, Type, member) \
-	ordered_hash_map_upsert_general((hm), (list), (key), (a), (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)_Alignof(Type), 0, 0)		
+	ordered_hash_map_upsert_general((hm), (list), (key), (a), (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)alignof(Type), 0, 0)		
 // Convenience macro: you can supply your data structure type and the name of the HashMap member,
 // instead of the size, alignment, and offset.
 
 #define ordered_hash_map_upsert_ex(hm, list, key, a, Type, member, flags, insert_count) \
-	ordered_hash_map_upsert_general((hm), (list), (key), (a), (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)_Alignof(Type), (flags), (insert_count))
+	ordered_hash_map_upsert_general((hm), (list), (key), (a), (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)alignof(Type), (flags), (insert_count))
 // Extended version of ordered_hash_map_upsert, which accepts a flags argument and an optional insert_count argument.
 
 
@@ -797,7 +809,7 @@ hash_u64(uint64_t x)
 }
 
 NONSTD_API uint32_t 
-rand_pcg32 (uint64_t state[static 1])
+rand_pcg32 (uint64_t state[1])
 {
 	// Pseudorandom number generator - (simplified) Permuted Congruential Generator
 	uint64_t m = 0x9b60933458e17d7d; // prime
@@ -809,7 +821,7 @@ rand_pcg32 (uint64_t state[static 1])
 
 
 NONSTD_API float 
-randn_pcg32 (uint64_t state[static 1])
+randn_pcg32 (uint64_t state[1])
 {
 	const float pi = 3.141592653589793238462643383f;
 	const float u32max = (float)UINT32_MAX;
@@ -820,7 +832,7 @@ randn_pcg32 (uint64_t state[static 1])
 }
 
 NONSTD_API float 
-randp_pcg32 (uint64_t state[static 1], float lambda)
+randp_pcg32 (uint64_t state[1], float lambda)
 {
 	const float u32max = (float)UINT32_MAX;
 	// poisson distribution random double generator
@@ -838,8 +850,8 @@ randp_pcg32 (uint64_t state[static 1], float lambda)
 NONSTD_API int
 bubblesort_step (BubbleSort *state, int N)
 {
-	int *c = &state->private[0];
-	int *i = &state->private[1];
+	int *c = &state->priv[0];
+	int *i = &state->priv[1];
 
 	if (state->a || state->b) {
 		if(state->swap) *c = 1;
@@ -937,7 +949,7 @@ NONSTD_API void *
 xmalloc(i64 bytes) 
 {
 	void *p = malloc(bytes);
-	if(!p) die("xmalloc failed to allocate %lli bytes", (long long) bytes);
+	if(!p) die((char*)"xmalloc failed to allocate %lli bytes", (long long) bytes);
 	memset(p,0,bytes);
 	return p;
 }
@@ -946,7 +958,7 @@ NONSTD_API void *
 xrealloc(void *p, i64 bytes)
 {
 	p = realloc(p,bytes);
-	if(!p) die("xrealloc failed to allocate %lli bytes", (long long) bytes);
+	if(!p) die((char*)"xrealloc failed to allocate %lli bytes", (long long) bytes);
 	return p;
 }
 
@@ -954,7 +966,7 @@ xrealloc(void *p, i64 bytes)
 NONSTD_API Arena malloc_arena(ptrdiff_t cap)
 {
 	Arena a = {0};
-	a.start = malloc(cap);
+	a.start = (char*)malloc(cap);
 	a.one_past_end = a.start ? a.start+cap : 0;
 	return a;
 }
@@ -994,13 +1006,13 @@ NONSTD_API char* allocate_sprintf(Arena *a, int *len, const char *fmt, ...)
 NONSTD_API char *allocate_cstrdup(Arena *a, char *s)
 {
 	int len = strlen(s);
-	char *p = allocate(a, len+1, 1, 1, 0);
-	return p ? memcpy(p, s, len+1) : 0;
+	char *p = (char*)allocate(a, len+1, 1, 1, 0);
+	return p ? (char*)memcpy(p, s, len+1) : 0;
 }
 
 NONSTD_API Str allocate_strdup(Arena *a, Str s)
 {
-	char *p = allocate(a, s.len+1, 1, 1, 0);
+	char *p = (char*)allocate(a, s.len+1, 1, 1, 0);
 	if(p) {
 		memcpy(p, s.ptr, s.len);
 		return mkstr(p, s.len);
@@ -1040,7 +1052,7 @@ NONSTD_API void *hash_map_upsert_general(
 
 	if (!a) return 0;
 
-	*hm = (void*) ((char*)allocate(a, size, align, 1, 0) + offset);
+	*hm = (HashMap*) ((char*)allocate(a, size, align, 1, 0) + offset);
 
 	if(insert_count) insert_count[0]++;
 
@@ -1073,7 +1085,7 @@ NONSTD_API void *ordered_hash_map_upsert_general(OrderedHashMap **hm,
 
 	if (!a) return 0;
 
-	*hm = (void*) ((char*)allocate(a, size, align, 1, 0) + offset);
+	*hm = (OrderedHashMap*) ((char*)allocate(a, size, align, 1, 0) + offset);
 	if(list) {
 		(*hm)->next = *list;
 		*list = *hm;
@@ -1212,14 +1224,14 @@ is_character_in_set(char c, char *set, int len)
 NONSTD_API int 
 is_ascii_punctuation(char c)
 {
-	char *p = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+	char *p = (char*)"!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
 	return is_character_in_set(c,p,32);
 }
 
 NONSTD_API int 
 is_ascii_whitespace(char c)
 {
-	char *s = " \t\r\n\f\v";
+	char *s = (char*)" \t\r\n\f\v";
 	return is_character_in_set(c,s,6);
 }
 
@@ -1425,6 +1437,8 @@ pattern_machine_run(PatternMachineState *m)
 		unsigned short arg    = instr >> ARG_SHIFT;
 		char c = arg;
 
+		int result=0,input=0; // have to forward-declare these to make C++ happy - can't jump over a declaration with a case label
+
 		switch(opcode) {
 		case OP_RET: 
 			if(arg) {
@@ -1510,8 +1524,8 @@ pattern_machine_run(PatternMachineState *m)
 		case OP_MATCH_BUILTIN:
 		case OP_MATCH_BUILTIN_AND_RPT:
 			assert(arg < 128);
-			int result = 0;
-			int input = pattern_machine_get_input(m);
+			result = 0;
+			input = pattern_machine_get_input(m);
 
 			if(input <= CHAR_MAX && input >= CHAR_MIN)
 			switch(c)
@@ -1679,12 +1693,12 @@ pattern_compile_ascii(char *pattern, int pattern_len)
 				if(next > CHAR_MAX) goto error;
 				#define TOKENS_MAPPED_TO_CHAR2  "%.+*?^$[]"
 				#define TOKENS_MAPPED_TO_GROUP "acdlpsuwxzACDLPSUWXZ"
-				if(is_character_in_set(next, TOKENS_MAPPED_TO_CHAR2, sizeof(TOKENS_MAPPED_TO_CHAR2)-1)) {
+				if(is_character_in_set(next, (char*)TOKENS_MAPPED_TO_CHAR2, sizeof(TOKENS_MAPPED_TO_CHAR2)-1)) {
 
 					if(!invert_class) program_add(OP_MATCH_AND_RET_T, next, &program);
 					else              program_add(OP_MATCH_AND_RET_F, next, &program);
 
-				} else if(is_character_in_set(next, TOKENS_MAPPED_TO_GROUP, sizeof(TOKENS_MAPPED_TO_GROUP)-1)) {
+				} else if(is_character_in_set(next, (char*)TOKENS_MAPPED_TO_GROUP, sizeof(TOKENS_MAPPED_TO_GROUP)-1)) {
 
 					if(!invert_class) program_add(OP_MATCH_BUILTIN_AND_RET_T, next, &program);
 					else              program_add(OP_MATCH_BUILTIN_AND_RET_F, next, &program);
@@ -1706,7 +1720,7 @@ pattern_compile_ascii(char *pattern, int pattern_len)
 			if(c == '%') {
 				if(next > CHAR_MAX) goto error;
 				#define TOKENS_MAPPED_TO_CHAR  "%.+*?^$["
-				if(is_character_in_set(next, TOKENS_MAPPED_TO_CHAR, sizeof(TOKENS_MAPPED_TO_CHAR)-1)) {
+				if(is_character_in_set(next, (char*)TOKENS_MAPPED_TO_CHAR, sizeof(TOKENS_MAPPED_TO_CHAR)-1)) {
 					if(nnext == '+') {
 						program_add(OP_MATCH_OR_RET_F, next, &program);
 						program_add(OP_MATCH_AND_RPT, next, &program);
@@ -1721,7 +1735,7 @@ pattern_compile_ascii(char *pattern, int pattern_len)
 						program_add(OP_MATCH_OR_RET_F, next, &program);
 						p++;
 					}
-				} else if(is_character_in_set(next, TOKENS_MAPPED_TO_GROUP, sizeof(TOKENS_MAPPED_TO_GROUP)-1)) {
+				} else if(is_character_in_set(next, (char*)TOKENS_MAPPED_TO_GROUP, sizeof(TOKENS_MAPPED_TO_GROUP)-1)) {
 					if(nnext == '+') {
 						program_add(OP_MATCH_BUILTIN_OR_RET_F, next, &program);
 						program_add(OP_MATCH_BUILTIN_AND_RPT, next, &program);
