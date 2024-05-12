@@ -227,16 +227,16 @@ int main(void)
 
 
 /*
-	die(), warn() and logmsg() provide convenient printf-like functions to emit 
+	die(), warning() and logmsg() provide convenient printf-like functions to emit 
 	messages. They do the familiar printf-like formatting to build a string, 
 	and then they call error_messge(), warning_message(), or info_message() respectively.
-	die() and warn() automatically include strerror(errno). die() terminates the program.
+	die() and warning() automatically include strerror(errno). die() terminates the program.
 
 	The aforementioned functions are suitable for messages up to 1000 characters. Longer
 	messages will be truncated.
 
 	error_message(), warning_message() and info_message() can be overridden by the user.
-	In the translation unit where you include util.h, define NONSTD_OVERRIDE_MESSAGE_FUNCTIONS
+	In the translation unit where you include nonstd.h, define NONSTD_OVERRIDE_MESSAGE_FUNCTIONS
 	and then provide your own definitions for the three. Default implementations are provided.
 	The defaults:
 	- error_message() sends the message to stderr
@@ -259,7 +259,7 @@ NONSTD_API void
 #if defined(__clang__) || defined(__GNUC__)
 __attribute__ ((format (printf, 1, 2)))
 #endif
-warn (char *fmt, ...);
+warning (char *fmt, ...);
 
 NONSTD_API void 
 #if defined(__clang__) || defined(__GNUC__)
@@ -578,6 +578,9 @@ NONSTD_API  void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t 
 NONSTD_API  char* allocate_sprintf(Arena *a, int *len, const char *fmt, ...);
 // Like `sprintf`, but allocates the string in the arena. The string is null-terminated.
 // Also writes the length of the string (excluding NULL) to the optional len parameter, if provided.
+
+NONSTD_API  Str allocate_strprintf(Arena *a, const char *fmt, ...);
+// Like `sprintf`, but allocates the string in the arena. The string is null-terminated.
 
 NONSTD_API char *allocate_cstrdup(Arena *a, char *s);
 // Like `strdup` but allocates the string in the arena. The string source and destination are 
@@ -916,7 +919,7 @@ NONSTD_API void
 #if defined(__clang__) || defined(__GNUC__)
 __attribute__ ((format (printf, 1, 2)))
 #endif
-warn (char *fmt, ...)
+warning (char *fmt, ...)
 {
 	char buf[1000] = {0};
 	memcpy(buf,"WARNING: ",9);
@@ -1001,6 +1004,20 @@ NONSTD_API char* allocate_sprintf(Arena *a, int *len, const char *fmt, ...)
         va_end(args2);
 		if(len) *len = n-1;
         return mem;
+}
+
+NONSTD_API Str allocate_strprintf(Arena *a, const char *fmt, ...)
+{
+        va_list args1, args2;
+        va_start(args1, fmt);
+        va_copy(args2, args1);
+        int n = 1 + vsnprintf(0, 0, fmt, args1);
+        char *mem = 0;
+	ALLOCATE(a, mem, n);
+        vsnprintf(mem, n, fmt, args2);
+        va_end(args1);
+        va_end(args2);
+        return mkstr(mem, n-1);
 }
 
 NONSTD_API char *allocate_cstrdup(Arena *a, char *s)
