@@ -502,8 +502,17 @@ NONSTD_API int str_pattern_match(Str *match, Str *string, CompiledStrPattern *pr
 static uint64_t hash_str_FNV1a(Str s) {return hash_cstr_FNV1a(s.ptr, s.len);}
 // Hashes a Str with FNV-1a
 
-
-
+NONSTD_API int64_t str_parse_int64(Str *s, const char **errmsg);
+NONSTD_API int32_t str_parse_int32(Str *s, const char **errmsg);
+// Parses an integer from the string. Skips leading whitespace, and will
+// deduce the sign from a leading '+' or '-' character. Hexadecimal 
+// can be parsed if prefixed with "0x" or "0X". Returns the parsed value, or
+// zero if no parse was possible. If parsing was successful, `s` is updated 
+// to point to the text after the parsed integer, otherwise `s` is left alone.
+// If an error occurs, and `errmsg` is not provided, the function calls `die()`.
+// If `errmsg` is provided, it will be set to indicate the nature of the parse
+// error (including overflow). If `errmsg` points to a nonzero value on entry,
+// the function is a no-op and returns zero.
 
 /* 
    ============================================================================
@@ -1957,6 +1966,107 @@ str_endswith(Str s, Str endswith)
 	}
 	nope: return 0;
 }
+
+
+NONSTD_API int64_t 
+str_parse_int64(Str *s, const char **errmsg)
+{
+	if(errmsg && *errmsg) return 0;
+	Str copy = *s;
+
+	// Skip leading whitespace
+	while(s->len > 0 && is_ascii_whitespace(s->ptr[0])) {
+		s->ptr++;
+		s->len--;
+	}
+
+	if(s->len == 0) {
+		if(errmsg) *errmsg = "Empty string";
+		else die("Empty string");
+		*s = copy;
+		return 0;
+	}
+
+	int sign = 1;
+	if (s->ptr[0] == '-') {
+		sign = -1;
+		s->ptr++;
+		s->len--;
+	} else if (s->ptr[0] == '+') {
+		s->ptr++;
+		s->len--;
+	}
+
+	if(s->len == 0) {
+		if(errmsg) *errmsg = "Invalid number";
+		else die("Invalid number");
+		*s = copy;
+		return 0;
+	}
+
+	int n = 0;
+	unsigned long long v = 0;
+
+	if(str_startswith(*s, mkstr((char*)"0x",2)) || 
+	   str_startswith(*s, mkstr((char*)"0X",2)) ){
+		s->ptr += 2;
+		s->len -= 2;
+		n = parse_hex_ull(s->ptr, s->len, &v);
+	} else {
+		n = parse_decimal_ull(s->ptr, s->len, &v);
+	}
+
+	if(n > 0) {
+		s->ptr += n;
+		s->len -= n;
+
+		if(sign > 0 && v > (unsigned long long)INT64_MAX) {
+			if(errmsg) *errmsg = "int64 overflow";
+			else die("int64 overflow");
+			*s = copy;
+			return 0;
+		} else if (sign < 0 && v > (unsigned long long)INT64_MAX + 1) {
+			if(errmsg) *errmsg = "int64 underflow";
+			else die("int64 underflow");
+			*s = copy;
+			return 0;
+		} else {
+			if (sign < 0 && v == (unsigned long long)INT64_MAX + 1) return INT64_MIN;
+			else return sign * (int64_t)v;
+		}
+	} else {
+		if(errmsg) *errmsg = "Invalid hex number, or uint64 overflow";
+		else die("Invalid hex number, or uint64 overflow");
+		*s = copy;
+		return 0;
+	}
+}
+
+NONSTD_API int32_t 
+str_parse_int32(Str *s, const char **errmsg)
+{
+	Str copy = *s;
+	int64_t v = str_parse_int64(s, errmsg);
+	if(errmsg && *errmsg) {
+		*s = copy;
+		return 0;
+	}
+
+	if(v > INT32_MAX) {
+		if(errmsg) *errmsg = "int32 overflow";
+		else die("int32 overflow");
+		*s = copy;
+		return 0;
+	} else if (v < INT32_MIN) {
+		if(errmsg) *errmsg = "int32 underflow";
+		else die("int32 underflow");
+		*s = copy;
+		return 0;
+	} else {
+		return (int32_t)v;
+	}
+}
+
 
 #ifdef NONSTD_DEBUG
 NONSTD_API int
