@@ -212,7 +212,7 @@ NONSTD_PLATFORM_API  void errmsg_from_platform(char * prefix);
 
 /* 
    ============================================================================
-		MEMORY MANAGEMENT
+		MEMORY & VIRTUAL MEMORY MANAGEMENT
    ============================================================================
 */
 
@@ -220,13 +220,6 @@ NONSTD_PLATFORM_API  int64_t get_total_mem_bytes (void);
 // return total machine memory size in bytes
 
 
-
-
-/* 
-   ============================================================================
-		VIRTUAL MEMORY MANAGEMENT
-   ============================================================================
-*/
 
 // returns 0 on failure
 NONSTD_PLATFORM_API  void* platform_reserve_mem(size_t size);
@@ -238,6 +231,24 @@ NONSTD_PLATFORM_API  int platform_decommit_mem (void* start, size_t len);
 NONSTD_PLATFORM_API  int platform_commit_mem   (void* start, size_t len); 
 NONSTD_PLATFORM_API  int platform_lock_mem     (void *start, size_t len);
 NONSTD_PLATFORM_API  int platform_unlock_mem   (void *start, size_t len);
+
+
+typedef struct {
+	void *start;
+	intptr_t size;
+} VirtualMemoryRegion;
+
+
+NONSTD_PLATFORM_API  VirtualMemoryRegion map_sparse_virtual_memory_region(intptr_t size, char **error_message);
+// Allocates a sparse (commit-on-demand) memory region of the given size.
+// Technically the size will be rounded to a multiple of the page size. 
+// If something goes wrong the `start` pointer will be null and `error_message`,
+// if supplied (it's optional), will contain a message from the OS.
+
+NONSTD_PLATFORM_API  char* unmap_virtual_memory_region(VirtualMemoryRegion vmr);
+// Unmaps / deallocates a region of virtual memory. Returns 0 on success, or a
+// message from the operating system on failure.
+
 
 
 #endif 
@@ -710,6 +721,8 @@ platform_read_file_into_buffer(int64_t buffer_size, void *buffer, int64_t *file_
 #define _GNU_SOURCE
 #endif
 #include <unistd.h>   // _SC_PAGE_SIZE, etc
+#include <sys/mman.h>
+
 NONSTD_PLATFORM_API int64_t platform_get_page_size(void)
 {
 	return sysconf(_SC_PAGE_SIZE);
@@ -722,6 +735,41 @@ NONSTD_PLATFORM_API int64_t get_total_mem_bytes (void)
 	int64_t pp = sysconf(_SC_PHYS_PAGES);
 	return ps*pp;
 }
+
+
+NONSTD_PLATFORM_API  VirtualMemoryRegion 
+map_sparse_virtual_memory_region(intptr_t size, char **error_message)
+{
+	void * mem = mmap(
+			0, 
+			size, 
+			PROT_READ | PROT_WRITE, 
+			MAP_PRIVATE | MAP_NORESERVE | MAP_ANONYMOUS, 
+			-1, 
+			0);
+
+	if(mem == MAP_FAILED) {
+		if (error_message) *error_message = strerror(errno);
+		mem = 0;
+	}
+
+	VirtualMemoryRegion vmr = {mem,size};
+	return vmr;
+}
+
+NONSTD_PLATFORM_API  char * 
+unmap_virtual_memory_region(VirtualMemoryRegion vmr)
+{
+	int x = munmap(vmr.start, vmr.size);
+	if(x == -1) return strerror(errno);
+	if(x == 0)  return 0;
+	assert(!"Unreachable");
+}
+// allocates a sparse (commit-on-demand) memory region of the given size.
+// technically the size will be rounded to a multiple of the page size. 
+
+
+
 #endif
 
 /* 
