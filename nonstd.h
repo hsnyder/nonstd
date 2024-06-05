@@ -141,12 +141,19 @@ NONSTD_API uint32_t rand_pcg32 (uint64_t state[1]);
 // Generate a random uint32, uniform distribution. 
 // Permuted congruential generator (32-bit)
 									       
-NONSTD_API float randn_pcg32 (uint64_t state[1]);
-// Generate a random float, normal distribution. 
+NONSTD_API double randu_pcg32 (uint64_t state[1]);
+static float randuf_pcg32 (uint64_t state[1]) {return randu_pcg32(state);}
+// Generate a random double/float, uniform distribution [0,1]. 
 // Permuted congruential generator (32-bit)
 
-NONSTD_API float randp_pcg32 (uint64_t state[1], float lambda);
-// Generate a random float, poisson distribution. 
+NONSTD_API double randn_pcg32 (uint64_t state[1]);
+static float randnf_pcg32 (uint64_t state[1]) {return randn_pcg32(state);}
+// Generate a random double/float, normal distribution. 
+// Permuted congruential generator (32-bit)
+
+NONSTD_API double randp_pcg32 (uint64_t state[1], double lambda);
+static float randpf_pcg32 (uint64_t state[1], float lambda) {return randp_pcg32(state, lambda);}
+// Generate a random double, poisson distribution. 
 // Permuted congruential generator (32-bit)
 
 
@@ -831,27 +838,33 @@ rand_pcg32 (uint64_t state[1])
 	return state[0] >> shift;
 }
 
-
-NONSTD_API float 
-randn_pcg32 (uint64_t state[1])
+NONSTD_API double 
+randu_pcg32 (uint64_t state[1])
 {
-	const float pi = 3.141592653589793238462643383f;
-	const float u32max = (float)UINT32_MAX;
-	// standard normal distributed random double generator
-	float u1 = rand_pcg32(state);
-	float u2 = rand_pcg32(state);
-	return sqrtf(-2.0f*logf(u1/u32max)) * cosf(2.0f*pi*(u2/u32max));
+	return rand_pcg32(state)/((double)UINT32_MAX);
 }
 
-NONSTD_API float 
-randp_pcg32 (uint64_t state[1], float lambda)
+NONSTD_API double 
+randn_pcg32 (uint64_t state[1])
 {
-	const float u32max = (float)UINT32_MAX;
+	// standard normal distributed random double generator
+	//const float pi = 0x1.921fb6p+1;
+	const double pi = 0x1.921fb54442d18p+1;
+	const double u32max = (double)UINT32_MAX;
+	double u1 = rand_pcg32(state);
+	double u2 = rand_pcg32(state);
+	return sqrt(-2.0*logf(u1/u32max)) * cos(2.0*pi*(u2/u32max));
+}
+
+NONSTD_API double 
+randp_pcg32 (uint64_t state[1], double lambda)
+{
+	const double u32max = (float)UINT32_MAX;
 	// poisson distribution random double generator
 	// slow for large lambda
 	int k = 0; 
-	float p = 1;
-	float L = expf(-lambda);
+	double p = 1;
+	double L = exp(-lambda);
 	do {
 		k++;
 		p *= rand_pcg32(state)/u32max;

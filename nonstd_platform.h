@@ -722,6 +722,7 @@ platform_read_file_into_buffer(int64_t buffer_size, void *buffer, int64_t *file_
 #endif
 #include <unistd.h>   // _SC_PAGE_SIZE, etc
 #include <sys/mman.h>
+#include <errno.h>
 
 NONSTD_PLATFORM_API int64_t platform_get_page_size(void)
 {
