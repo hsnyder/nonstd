@@ -479,13 +479,15 @@ static Str mkstr(char *ptr, int len) {return (Str){ptr,len};}
 NONSTD_API Str str_strip(Str s);
 // Returns a copy of s where leading and trailing ASCII whitespace have been removed.
 
-NONSTD_API Str str_split(Str* s, char delim);
+NONSTD_API Str str_split(Str* s, char delim, int *more_tokens);
 // Pops the first substring (delimited by `delim`) off of `s` (modifying it).
-// `s` will have zero-length if there's nothing left to pop.
+// `more_tokens` is optional (null-safe). If provided, it will be set to 1 or 0 
+// to indicate whether `s` contains more tokens (use as a loop stopping condition).
 
-NONSTD_API Str str_split_str(Str* s, Str delim);
+NONSTD_API Str str_split_str(Str* s, Str delim, int *more_tokens);
 // Pops the first substring (delimited by `delim`) off of `s` (modifying it).
-// `s` will have zero-length if there's nothing left to pop.
+// `more_tokens` is optional (null-safe). If provided, it will be set to 1 or 0 
+// to indicate whether `s` contains more tokens (use as a loop stopping condition).
 
 NONSTD_API int str_equals(Str a, Str b);
 // Returns 1 if `a` and `b` are equal, 0 otherwise
@@ -1885,7 +1887,7 @@ str_strip(Str s)
 }
 
 NONSTD_API Str
-str_split(Str* s, char delim)
+str_split(Str* s, char delim, int *more_tokens)
 {
 	Str rtn = { .ptr = s->ptr };
 	for(int i = 0; i < s->len; i++){
@@ -1893,17 +1895,19 @@ str_split(Str* s, char delim)
 			rtn.len = i;
 			s->ptr += (i+1);
 			s->len -= (i+1);
+			if(more_tokens) *more_tokens=1;
 			goto out;
 		}
 	}
 	rtn.len = s->len;
-	s->ptr += s->len+1;
+	s->ptr += s->len;
 	s->len = 0;
+	if(more_tokens) *more_tokens=0;
 	out: return rtn;
 }
 
 NONSTD_API Str
-str_split_str(Str* s, Str delim)
+str_split_str(Str* s, Str delim, int *more_tokens)
 {
 	int i = str_search(*s, delim);
 	Str rtn = { .ptr = s->ptr };
@@ -1911,11 +1915,13 @@ str_split_str(Str* s, Str delim)
 		rtn.len = i;
 		s->ptr += (i+delim.len);
 		s->len -= (i+delim.len);
+		if(more_tokens) *more_tokens=1;
 		return rtn;
 	} else {
 		rtn.len = s->len;
-		s->ptr += s->len+delim.len;
+		s->ptr += s->len;
 		s->len = 0;
+		if(more_tokens) *more_tokens=0;
 		return rtn;
 	}
 }
