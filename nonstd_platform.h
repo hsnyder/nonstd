@@ -74,6 +74,11 @@ NONSTD_PLATFORM_API uint64_t get_os_timer_freq(void);
 */
 NONSTD_PLATFORM_API uint64_t read_os_timer(void);
 
+/*
+	Suspend thread for approximately the given number of milliseconds
+*/
+NONSTD_PLATFORM_API void sleep_ms(int ms);
+
 
 
 /* 
@@ -126,6 +131,15 @@ NONSTD_PLATFORM_API void queue_pop_commit(uint32_t *q);
 
 NONSTD_PLATFORM_API int  queue_mpop(uint32_t *q, int exp, uint32_t *save);
 NONSTD_PLATFORM_API int  queue_mpop_commit(uint32_t *q, uint32_t save);
+
+
+/*
+	"Wait Group" (inspired by golang)
+   	This is another one from Chris Wellons: https://nullprogram.com/blog/2022/10/05/
+*/
+NONSTD_PLATFORM_API void waitgroup_add(int *wg, int delta);
+NONSTD_PLATFORM_API void waitgroup_done(int *wg);
+NONSTD_PLATFORM_API void waitgroup_wait(int *wg);
 
 
 /*
@@ -227,8 +241,8 @@ NONSTD_PLATFORM_API  void* platform_reserve_mem(size_t size);
 // returns 0 on failure, true on success.
 // NOTE: start is rounded DOWN to the page size, and len is rounded UP to the end of the page. 
 NONSTD_PLATFORM_API  int platform_unreserve_mem(void *start, size_t len);
-NONSTD_PLATFORM_API  int platform_decommit_mem (void* start, size_t len);
-NONSTD_PLATFORM_API  int platform_commit_mem   (void* start, size_t len); 
+NONSTD_PLATFORM_API  int platform_decommit_mem (void *start, size_t len);
+NONSTD_PLATFORM_API  int platform_commit_mem   (void *start, size_t len); 
 NONSTD_PLATFORM_API  int platform_lock_mem     (void *start, size_t len);
 NONSTD_PLATFORM_API  int platform_unlock_mem   (void *start, size_t len);
 
@@ -418,6 +432,26 @@ static void futex_wake_all(uint32_t *f) { }
 #endif
 
 
+NONSTD_PLATFORM_API void 
+waitgroup_add(int *wg, int delta)
+{
+	__atomic_add_fetch(wg, delta, __ATOMIC_SEQ_CST);
+}
+
+NONSTD_PLATFORM_API void waitgroup_done(int *wg)
+{
+	if (!__atomic_add_fetch(wg, -1, __ATOMIC_SEQ_CST))
+		futex_wake_all((uint32_t*)wg);
+}
+
+NONSTD_PLATFORM_API void waitgroup_wait(int *wg)
+{
+	while(1){
+		int v = __atomic_load_n(wg, __ATOMIC_SEQ_CST);
+		if (!v) break;
+		futex_wait((uint32_t*)wg, (uint32_t)v); 
+	}
+}
 
 NONSTD_PLATFORM_API void 
 event_wait(uint32_t *event)
@@ -512,17 +546,33 @@ blocking_queue_pop_commit(BlockingConcurrentQueue *q)
 */
 #if defined(__linux__) || defined(__unix__) || defined(__unix) || defined(__APPLE__)
 #include <sys/time.h> // gettimeofday
+#include <time.h>		      
+
+NONSTD_PLATFORM_API void
+sleep_ms(int ms)
+{
+	assert(ms >= 0);
+	struct timespec ts;
+	ts.tv_sec = ms/1000;
+	ts.tv_nsec = (ms % 1000) * 1000000L;
+	nanosleep(&ts,0);
+}
+
+
 NONSTD_PLATFORM_API uint64_t
-get_os_timer_freq(void) {
+get_os_timer_freq(void) 
+{
 	return 1000000ull;
 }
 
 NONSTD_PLATFORM_API uint64_t 
-read_os_timer(void) {
+read_os_timer(void) 
+{
 	struct timeval tval;
 	gettimeofday(&tval, 0);
 	return (uint64_t)tval.tv_sec * get_os_timer_freq() + (uint64_t)tval.tv_usec;
 }
+
 
 
 /* 
@@ -532,6 +582,13 @@ read_os_timer(void) {
 */
 #elif defined(_WIN32)
 #include <windows.h>
+
+NONSTD_PLATFORM_API void
+sleep_ms(int ms)
+{
+	assert(ms >= 0);
+	Sleep((unsigned long)ms);
+}
 
 NONSTD_PLATFORM_API uint64_t
 get_os_timer_freq(void) {

@@ -179,7 +179,7 @@ NONSTD_API uint64_t hash_u64(uint64_t x);
 
 /* 
    ============================================================================
-		SORTING 
+		SORTING AND SHUFFLING
    ============================================================================
 */
 typedef struct {
@@ -225,6 +225,45 @@ int main(void)
 */
 
 
+typedef struct {
+	u64 rng_state; // set this ahead of time to seed the random state
+	// zero-initialize the rest of this struct before the first shuffle_step call
+
+	// after every call, caller should swap elements at positions a and b
+	int a; 
+	int b;
+
+	int priv; // leave this alone
+
+} FisherYatesShuffle;
+
+NONSTD_API int shuffle_step(FisherYatesShuffle *state, int N);
+
+/*
+	
+	Example test program:
+
+int main(void)
+{
+	float n[10];
+	for(int i = 0; i < 10; i++) n[i] = i;
+
+	for(int i = 0; i < 10; i++) printf("%f\n",n[i]);
+	printf("\n\n");
+	
+	FisherYatesShuffle s = {0};
+	while(shuffle_step(&s, 10)) {
+		float tmp = n[s.a];
+		n[s.a] = n[s.b];
+		n[s.b] = tmp;
+	}
+
+	for(int i = 0; i < 10; i++) printf("%f\n",n[i]);
+}
+
+*/
+
+
 /* 
    ============================================================================
 		ERROR HANDLING
@@ -260,23 +299,23 @@ NONSTD_API _Noreturn void
 #if defined(__clang__) || defined(__GNUC__)
 __attribute__ ((format (printf, 1, 2)))
 #endif
-die (char *fmt, ...);
+die (const char *fmt, ...);
 
 NONSTD_API void 
 #if defined(__clang__) || defined(__GNUC__)
 __attribute__ ((format (printf, 1, 2)))
 #endif
-warning (char *fmt, ...);
+warning (const char *fmt, ...);
 
 NONSTD_API void 
 #if defined(__clang__) || defined(__GNUC__)
 __attribute__ ((format (printf, 1, 2)))
 #endif
-logmsg (char *fmt, ...);
+logmsg (const char *fmt, ...);
 
-NONSTD_API  void error_message   (char * str);
-NONSTD_API  void warning_message (char * str);
-NONSTD_API  void info_message    (char * str);
+NONSTD_API  void error_message   (const char * str);
+NONSTD_API  void warning_message (const char * str);
+NONSTD_API  void info_message    (const char * str);
 
 
 
@@ -478,6 +517,10 @@ static Str mkstr(char *ptr, int len) {return (Str){ptr,len};}
 
 NONSTD_API Str str_strip(Str s);
 // Returns a copy of s where leading and trailing ASCII whitespace have been removed.
+
+NONSTD_API int str_pop_str(Str* s, Str what);
+// If `s` starts with the substring `what`, updates `s` to point past `what` and returns 1.
+// Otherwise, returns 0 and `s` is unchanged.
 
 NONSTD_API Str str_split(Str* s, char delim, int *more_tokens);
 // Pops the first substring (delimited by `delim`) off of `s` (modifying it).
@@ -899,22 +942,38 @@ bubblesort_step (BubbleSort *state, int N)
 }
 
 
+NONSTD_API int 
+shuffle_step(FisherYatesShuffle *state, int N)
+{
+	if(state->priv == 0) state->priv = N;
+	int i = state->priv - 1;
+	if (i==0) return 0;
+
+	double random = randu_pcg32(&state->rng_state);
+	int j = round(random * i);
+
+	state->a = i;
+	state->b = j;
+	state->priv--;
+	return 1;
+}
+
 
 ///  error messages
 
 
 #ifndef NONSTD_OVERRIDE_MESSAGE_FUNCTIONS
-	NONSTD_API void error_message (char * str)
+	NONSTD_API void error_message (const char * str)
 	{
 		fprintf(stderr, "%s\n", str);
 		fflush(stderr);
 	}
-	NONSTD_API void warning_message (char * str)
+	NONSTD_API void warning_message (const char * str)
 	{
 		fprintf(stderr, "%s\n", str);
 		fflush(stderr);
 	}
-	NONSTD_API void info_message (char * str)
+	NONSTD_API void info_message (const char * str)
 	{
 		fprintf(stdout, "%s\n", str);
 		fflush(stdout);
@@ -927,7 +986,7 @@ NONSTD_API _Noreturn void
 #if defined(__clang__) || defined(__GNUC__)
 __attribute__ ((format (printf, 1, 2)))
 #endif
-die (char *fmt, ...)
+die (const char *fmt, ...)
 {
 	char buf[1000] = {0};
 	memcpy(buf,"DIE: ",5);
@@ -943,7 +1002,7 @@ NONSTD_API void
 #if defined(__clang__) || defined(__GNUC__)
 __attribute__ ((format (printf, 1, 2)))
 #endif
-warning (char *fmt, ...)
+warning (const char *fmt, ...)
 {
 	char buf[1000] = {0};
 	memcpy(buf,"WARNING: ",9);
@@ -958,7 +1017,7 @@ NONSTD_API void
 #if defined(__clang__) || defined(__GNUC__)
 __attribute__ ((format (printf, 1, 2)))
 #endif
-logmsg (char *fmt, ...)
+logmsg (const char *fmt, ...)
 {
 	char buf[1000]  = {0};
 	va_list args;
@@ -976,7 +1035,7 @@ NONSTD_API void *
 xmalloc(i64 bytes) 
 {
 	void *p = malloc(bytes);
-	if(!p) die((char*)"xmalloc failed to allocate %lli bytes", (long long) bytes);
+	if(!p) die("xmalloc failed to allocate %lli bytes", (long long) bytes);
 	memset(p,0,bytes);
 	return p;
 }
@@ -985,7 +1044,7 @@ NONSTD_API void *
 xrealloc(void *p, i64 bytes)
 {
 	p = realloc(p,bytes);
-	if(!p) die((char*)"xrealloc failed to allocate %lli bytes", (long long) bytes);
+	if(!p) die("xrealloc failed to allocate %lli bytes", (long long) bytes);
 	return p;
 }
 
@@ -1884,6 +1943,18 @@ str_strip(Str s)
 		break;
 	}
 	return s;
+}
+
+NONSTD_API int
+str_pop_str(Str* s, Str what)
+{
+	if (str_startswith(*s, what)) {
+		s->ptr += what.len;
+		s->len -= what.len;
+		return 1;
+	} else {
+		return 0;
+	}
 }
 
 NONSTD_API Str
