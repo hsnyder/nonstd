@@ -14,6 +14,9 @@
 		#include "nonstd_platform.h"
 
 	The implementation section of nonstd_platform.h depends on nonstd.h.
+	This means you probably need to include nonstd_platform.h BEFORE 
+	you include nonstd.h if you're putting the implementations in the
+	same translation unit.
 */
 #ifndef NONSTD_PLATFORM_H
 #define NONSTD_PLATFORM_H

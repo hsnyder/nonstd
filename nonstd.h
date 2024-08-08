@@ -10,8 +10,8 @@
 	- Include the header as necessary,
 	- Do the following in exactly one translation unit:
 
-		#define NONSTD_PLATFORM_IMPLEMENTATION
-		#include "nonstd_platform.h"
+		#define NONSTD_IMPLEMENTATION
+		#include "nonstd.h"
 
 
 */
