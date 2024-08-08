@@ -1854,8 +1854,8 @@ pattern_match_ascii(char *string, int string_len, CompiledStrPattern *program, i
 NONSTD_API Str 
 str_strip(Str s)
 {
-	for(int i = 0; i < s.len; i++) {
-		switch (s.ptr[i]) {
+	while(s.len > 0) {
+		switch (s.ptr[0]) {
 		case ' ':  case '\t': case '\n':
 		case '\r': case '\f': case '\v':
 			s.ptr++;
