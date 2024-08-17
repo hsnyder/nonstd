@@ -1,4 +1,5 @@
 #ifndef NONSTD_PROGRESSBAR
+#define NONSTD_PROGRESSBAR
 
 #include <stdio.h>
 #include <stdint.h>

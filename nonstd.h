@@ -225,7 +225,7 @@ int main(void)
 */
 
 
-typedef struct {
+typedef struct FisherYatesShuffle {
 	u64 rng_state; // set this ahead of time to seed the random state
 	// zero-initialize the rest of this struct before the first shuffle_step call
 
@@ -466,7 +466,7 @@ NONSTD_API int parse_decimal_ull(char *str, int len, unsigned long long *result)
 //   that is interpreted at runtime to actually determine the match.
 
 
-typedef struct
+typedef struct CompiledStrPattern
 {
 	int error;
 	// if this is non-zero, it will be either 1 (meaning the program
@@ -507,7 +507,7 @@ NONSTD_API int debug_dump_program(char *buffer, int buffer_len, CompiledStrPatte
 // underlying buffer that stores the characters in the string, and all the 
 // functions that operate on Strs leave the underlying buffer unchanged. 
 
-typedef struct {
+typedef struct Str {
 	char *ptr;
 	int len;
 } Str;
@@ -587,7 +587,7 @@ NONSTD_API  void * xrealloc(void *p, i64 bytes);
    Some ideas drawn from Chris Wellons's excellent blog (https://nullprogram.com/) 
 */
 
-typedef struct {
+typedef struct Arena {
 	// A simple arena type. The caller is responsible for actually allocating the underlying memory
 	char *start; 
 	char *one_past_end;
@@ -597,7 +597,7 @@ typedef struct {
 	// automatically "freed" upon return - great for scratch arenas).
 } Arena;
 
-enum {
+enum AllocationFlags {
 	// Flags for the alloc function
 	ALLOC_NO_ZERO   = 1<<0, // Don't zero the allocated memory
 	ALLOC_SOFT_FAIL = 1<<1, // Don't abort if the allocation fails, just return 0
@@ -1426,7 +1426,7 @@ enum {
 	ARG_SHIFT = 4,
 };
 
-typedef struct
+typedef struct PatternMachineState
 {
 	char *input;
 	int input_len;
