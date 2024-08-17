@@ -535,6 +535,9 @@ NONSTD_API Str str_split_str(Str* s, Str delim, int *more_tokens);
 NONSTD_API int str_equals(Str a, Str b);
 // Returns 1 if `a` and `b` are equal, 0 otherwise
 
+NONSTD_API int str_equals_ci(Str a, Str b);
+// Case-insensitive version of str_equals, but assumes `a` and `b` are ASCII.
+
 NONSTD_API int str_startswith(Str s, Str startswith);
 // Returns 1 if `s` begins with `startswith`, 0 otherwise
 
@@ -1935,10 +1938,26 @@ str_equals(Str a, Str b)
 	// TODO use memcmp?
 	if(a.len==b.len) {
 		for(int i = 0; i < a.len; i++)
-			if(a.ptr[i]!=b.ptr[i]) goto nope;
+			if(a.ptr[i]!=b.ptr[i])
+				return 0;
 		return 1;
 	}
-	nope: return 0;
+	return 0;
+}
+
+NONSTD_API int
+str_equals_ci(Str a, Str b)
+{
+	if(a.len==b.len) {
+		for(int i = 0; i < a.len; i++) {
+			int A = is_ascii_upper(a.ptr[i]) ? a.ptr[i]+32 : a.ptr[i];
+			int B = is_ascii_upper(b.ptr[i]) ? b.ptr[i]+32 : b.ptr[i];
+			if(A!=B)
+				return 0;
+		}
+		return 1;
+	}
+	return 0;
 }
 
 NONSTD_API int
