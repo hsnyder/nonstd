@@ -42,15 +42,19 @@ typedef uint16_t u16 ;
 typedef uint32_t u32 ;
 typedef uint64_t u64 ;
 
-#ifndef assert
+#if defined(_MSC_VER)
+#  define BREAKPOINT() __debugbreak()
+#elif defined(__GNUC__) || defined(__clang__)
+#  define BREAKPOINT() __builtin_trap()
+#else
+#  define BREAKPOINT() do{*(volatile int*)0=0;}while(0)
+#endif
+
+#if !defined(assert) || defined(NONSTD_FORCE_ASSERT)
 #  ifdef DISABLE_ASSERTIONS
 #    define assert(c)
-#  elif defined(_MSC_VER)
-#    define assert(c) if(!(c)){__debugbreak();}
-#  elif defined(__GNUC__) || defined(__clang__)
-#    define assert(c) if(!(c)){__builtin_trap();}
-#  else 
-#    define assert(c) if(!(c)){*(volatile int*)0=0;}
+#  else
+#    define assert(c) if(!(c)){BREAKPOINT();}
 #  endif
 #endif
 
@@ -289,6 +293,8 @@ int main(void)
 	- warning_message() sends the message to stderr
         - info_message() sends the message to stdout	
 	- all three append a newline.
+
+    If you wish, you can define NONSTD_BREAKPOINT_DIE to put a BREAKPOINT() at the end of die()
 */
 
 #ifdef __cplusplus
@@ -955,7 +961,10 @@ die (const char *fmt, ...)
 	vsnprintf(buf+5, sizeof(buf)-5, fmt, args);
 	va_end(args);
 	error_message(buf);
-	exit(EXIT_FAILURE);
+#ifdef NONSTD_BREAKPOINT_DIE
+	BREAKPOINT();
+#endif
+exit(EXIT_FAILURE);
 }
 
 NONSTD_API void 

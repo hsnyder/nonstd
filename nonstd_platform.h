@@ -103,7 +103,40 @@ NONSTD_PLATFORM_API void ticket_mutex_unlock(TicketMutex *m);
 
 
 /*
-	"once barrier".. useful if you need some initialization code to be called exactly once.
+	Wrapper around the native operating system mutex
+	(critical section on Windows, pthread mutex on others)
+*/
+
+#ifdef _WIN32
+#include <windows.h>
+	typedef struct OSMutex {
+		CRITICAL_SECTION m;
+		int init;
+	} OSMutex;
+#else
+#include <pthread.h>
+typedef struct OSMutex {
+	pthread_mutex_t m;
+	int init;
+} OSMutex;
+#endif
+
+
+NONSTD_PLATFORM_API void os_mutex_lock_(OSMutex *m);
+NONSTD_PLATFORM_API void os_mutex_lock(OSMutex *m);
+NONSTD_PLATFORM_API void os_mutex_unlock_(OSMutex *m);
+NONSTD_PLATFORM_API void os_mutex_unlock(OSMutex *m);
+// Mutex lock and unlock routines. The non-suffixed versions will detect if `m` is zero-initialized,
+// and automatically call `os_mutex_init` for you. The `_`-suffixed versions don't do this, so you
+// must call `os_mutex_init` yourself (this saves an atomic load and a branch per lock/unlock).
+
+NONSTD_PLATFORM_API void os_mutex_init(OSMutex *m);
+// Calls the OS-specific initialization routine for the mutex.
+
+
+
+/*
+	"once barrier". useful if you need some initialization code to be called exactly once.
 	usage is:
 
 	static int b = 0; // init to zero is important
@@ -119,6 +152,17 @@ NONSTD_PLATFORM_API int once_enter(int *b);
 
 NONSTD_PLATFORM_API void once_commit(int *b); 
 // Call this once you're done doing init work.
+
+
+
+NONSTD_PLATFORM_API void barrier_spin_wait(uint32_t *b, int nthd);
+// Chris Wellons' spin-lock barrier. `b`, zero-initialized, is the barrier.
+// nthd must be a power of 2 and must be the same at every call site.
+
+NONSTD_PLATFORM_API void barrier_wait(uint32_t *b, int nthd);
+// Similar to above, but uses futexes to sleep while waiting for other threads.
+// TODO THIS VERSION NEEDS MORE VALIDATION / AUDITING
+
 
 /*
 	Lock free concurrent queue.
@@ -155,6 +199,24 @@ NONSTD_PLATFORM_API void waitgroup_wait(int *wg);
 NONSTD_PLATFORM_API void event_wait(uint32_t *event);
 NONSTD_PLATFORM_API void event_post(uint32_t *event);
 NONSTD_PLATFORM_API void event_reset(uint32_t *event);
+
+
+/*
+	Channel.
+    - Inspired by Go's unbuffered channels.
+    - Synchronizes two threads and passes a pointer from one to the other.
+Caution: Relies on barrier_wait, which still needs additional validation/auditing
+*/
+
+typedef struct {
+	void *value;
+	uint32_t barrier;
+	OSMutex r_mtx;
+	OSMutex w_mtx;
+} Channel;
+
+void *channel_receive(Channel *chan);
+void channel_send(Channel *chan, void *value);
 
 /*
 	Unfair blocking semaphore.
@@ -316,6 +378,39 @@ ticket_mutex_unlock(TicketMutex *m)
         (void) __atomic_fetch_add(&m->serving, 1, __ATOMIC_RELEASE);
 }
 
+
+
+
+#ifdef _WIN32
+NONSTD_PLATFORM_API void os_mutex_init(OSMutex *m) { InitializeCriticalSection(&m->m); }
+NONSTD_PLATFORM_API void os_mutex_lock_(OSMutex *m) { EnterCriticalSection(&m->m); }
+NONSTD_PLATFORM_API void os_mutex_unlock_(OSMutex *m) { LeaveCriticalSection(&m->m); }
+#else
+NONSTD_PLATFORM_API void os_mutex_init(OSMutex *m) { m->m = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER; }
+NONSTD_PLATFORM_API void os_mutex_lock_(OSMutex *m) { int rc = pthread_mutex_lock(&m->m); assert(rc==0); }
+NONSTD_PLATFORM_API void os_mutex_unlock_(OSMutex *m) { int rc = pthread_mutex_unlock(&m->m); assert(rc==0); }
+#endif
+
+NONSTD_PLATFORM_API void os_mutex_lock(OSMutex *m)
+{
+	if(once_enter(&m->init)) {
+		os_mutex_init(m);
+		once_commit(&m->init);
+	}
+	os_mutex_lock_(m);
+}
+
+NONSTD_PLATFORM_API void os_mutex_unlock(OSMutex *m)
+{
+	if(once_enter(&m->init)) {
+		os_mutex_init(m);
+		once_commit(&m->init);
+	}
+	os_mutex_unlock_(m);
+}
+
+
+
 NONSTD_PLATFORM_API int 
 once_enter(int *b)
 {
@@ -435,6 +530,36 @@ static void futex_wake_all(uint32_t *f) { }
 #endif
 
 
+
+
+NONSTD_PLATFORM_API void
+barrier_spin_wait(uint32_t *b, int nthd)
+{
+	uint32_t v = __atomic_add_fetch(b, 1, __ATOMIC_SEQ_CST);
+	if (v & (nthd-1)) {
+		uint32_t phase = v & nthd;
+		while((__atomic_load_n(b, __ATOMIC_SEQ_CST) & nthd) == phase) {
+			SPIN_LOOP_HINT();
+		}
+	}
+}
+
+NONSTD_PLATFORM_API void
+barrier_wait(uint32_t *b, int nthd)
+{
+	uint32_t v = __atomic_add_fetch(b, 1, __ATOMIC_SEQ_CST);
+	if (v & (nthd-1)) {
+		uint32_t phase = v & nthd;
+		while((__atomic_load_n(b, __ATOMIC_SEQ_CST) & nthd) == phase) {
+			futex_wait(b, v);
+		}
+	} else {
+		futex_wake_all(b);
+	}
+}
+
+
+
 NONSTD_PLATFORM_API void 
 waitgroup_add(int *wg, int delta)
 {
@@ -481,6 +606,52 @@ event_reset(uint32_t *event)
 {
 	__atomic_store_n(event, 0, __ATOMIC_RELAXED);
 }
+
+
+
+NONSTD_PLATFORM_API void channel_send(Channel *chan, void *value)
+{
+	if(once_enter(&chan->r_mtx.init)) {
+		os_mutex_init(&chan->r_mtx);
+		os_mutex_init(&chan->w_mtx);
+		once_commit(&chan->r_mtx.init);
+	}
+
+	// wait in line for our turn to send
+	os_mutex_lock_(&chan->w_mtx);
+
+	// store the value, wait until we know it's received
+	chan->value = value;
+	barrier_wait(&chan->barrier, 2);
+	barrier_spin_wait(&chan->barrier, 2);
+
+	// let the next writer in
+	os_mutex_unlock_(&chan->w_mtx);
+}
+
+NONSTD_PLATFORM_API void *channel_receive(Channel *chan)
+{
+	if(once_enter(&chan->r_mtx.init)) {
+		os_mutex_init(&chan->r_mtx);
+		os_mutex_init(&chan->w_mtx);
+		once_commit(&chan->r_mtx.init);
+	}
+
+	// wait in line for our turn to receive
+	os_mutex_lock_(&chan->r_mtx);
+
+	// wait until we know there's a value, then retreive it
+	barrier_wait(&chan->barrier, 2);
+	void * value = chan->value;
+	barrier_spin_wait(&chan->barrier, 2);
+
+	// let the next reader in
+	os_mutex_unlock_(&chan->r_mtx);
+
+	return value;
+}
+
+
 
 
 NONSTD_PLATFORM_API void 
