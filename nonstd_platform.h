@@ -30,6 +30,21 @@
 
 /* 
    ============================================================================
+		CPU FEATURE DETECTION
+   ============================================================================
+*/
+
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+#define SYSV_ABI __attribute__((sysv_abi))
+
+NONSTD_PLATFORM_API extern void SYSV_ABI 
+issue_cpuid(unsigned registers[static 4], unsigned eax, unsigned ecx);
+
+#endif
+
+
+/* 
+   ============================================================================
 		TIMING AND PROFILING 
    ============================================================================
 */
@@ -215,8 +230,8 @@ typedef struct {
 	OSMutex w_mtx;
 } Channel;
 
-void *channel_receive(Channel *chan);
-void channel_send(Channel *chan, void *value);
+NONSTD_PLATFORM_API void *channel_receive(Channel *chan);
+NONSTD_PLATFORM_API void channel_send(Channel *chan, void *value);
 
 /*
 	Unfair blocking semaphore.
@@ -345,6 +360,23 @@ NONSTD_PLATFORM_API  char* unmap_virtual_memory_region(VirtualMemoryRegion vmr);
    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 */
 #ifdef NONSTD_PLATFORM_IMPLEMENTATION
+
+#if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
+asm(
+".global issue_cpuid            \n"
+"issue_cpuid:                   \n"
+"	pushq	%rbx            \n"
+"	movl	%esi, %eax      \n"
+"	movl	%edx, %ecx      \n"
+"	cpuid                   \n"
+"	movl 	%eax, (%rdi)    \n"
+"	movl	%ebx, 4(%rdi)   \n"
+"	movl 	%ecx, 8(%rdi)   \n"
+"	movl 	%edx, 12(%rdi)  \n"
+"	popq	%rbx            \n"
+"       ret                     \n"
+);
+#endif
 
 #include "nonstd.h"
 
