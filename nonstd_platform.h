@@ -37,7 +37,7 @@
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
 #define SYSV_ABI __attribute__((sysv_abi))
 
-NONSTD_PLATFORM_API extern void SYSV_ABI 
+extern void SYSV_ABI 
 issue_cpuid(unsigned registers[static 4], unsigned eax, unsigned ecx);
 
 #endif
