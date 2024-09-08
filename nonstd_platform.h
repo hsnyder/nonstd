@@ -77,7 +77,7 @@
 #define SYSV_ABI __attribute__((sysv_abi))
 
 extern void SYSV_ABI 
-issue_cpuid(unsigned registers[static 4], unsigned eax, unsigned ecx);
+issue_cpuid(unsigned registers[4], unsigned eax, unsigned ecx);
 
 #endif
 
