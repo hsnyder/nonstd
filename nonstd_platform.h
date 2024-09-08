@@ -30,6 +30,45 @@
 
 /* 
    ============================================================================
+		BINARY DATA INCLUSION
+   ============================================================================
+*/
+
+#if (defined(__GNUC__) || defined(__clang__))
+#if defined(__linux__) || defined(__OPENBSD__) || defined(__FreeBSD__) || defined(__NetBSD__)
+
+
+#define EMBED_FILE(file, symbol, section, align) __asm (\
+    ".section " #section        "\n" \
+    ".balign " #align           "\n" \
+    ".global " #symbol          "\n" \
+    #symbol ":                   \n" \
+    ".incbin \"" file "\"        \n" \
+    ".global " #symbol "_size    \n" \
+    ".set " #symbol "_size, . - " #symbol "\n" \
+    ".balign 16                  \n" \
+    ".section \".text\"          \n"); \
+    extern const char symbol [], symbol ## _size [];
+
+// USAGE
+//
+//   Do this outside a function in global scope:
+//
+//     EMBED_FILE("myfile.txt", myfile, "text", 64);
+//
+//   And then where you want the data:
+//     
+//     write(fd, myfile, (size_t) myfile_size); // or whatever
+//
+//   The 'align' argument specifies the alignment of the embedded data.
+//   Choose an alignment that matches your platform's requirements or
+//   the data access patterns you expect (e.g., 16 for SIMD operations).
+
+#endif
+#endif
+
+/* 
+   ============================================================================
 		CPU FEATURE DETECTION
    ============================================================================
 */
@@ -362,7 +401,7 @@ NONSTD_PLATFORM_API  char* unmap_virtual_memory_region(VirtualMemoryRegion vmr);
 #ifdef NONSTD_PLATFORM_IMPLEMENTATION
 
 #if defined(__x86_64__) && (defined(__GNUC__) || defined(__clang__))
-asm(
+__asm (
 ".global issue_cpuid            \n"
 "issue_cpuid:                   \n"
 "	pushq	%rbx            \n"
@@ -389,8 +428,15 @@ asm(
 // Most architectures have special instructions which hint to the CPU that we're in a spin-lock loop.
 #if   defined(__x86_64__)
 #define SPIN_LOOP_HINT()  __asm __volatile ("pause"); 
+#elif defined(__aarch64__)
+#define SPIN_LOOP_HINT()  __asm __volatile ("isb sy"); 
 #elif defined(__arm__)
 #define SPIN_LOOP_HINT()  __asm __volatile ("yield"); 
+#elif defined(__PPC64__)
+#define SPIN_LOOP_HINT()  __asm __volatile ("ori r0, r0, r0");  // nop
+// TODO use "or r1, r1, r1" to de-prioritize the thread before the loop, then "or r2, r2, r2" after
+#elif defined(__s390x__)
+#define SPIN_LOOP_HINT()  // TODO, if applicable
 #else
 #define SPIN_LOOP_HINT() 
 #endif
