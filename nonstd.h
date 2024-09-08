@@ -164,25 +164,6 @@ static float randpf_pcg32 (uint64_t state[1], float lambda) {return randp_pcg32(
 
 /* 
    ============================================================================
-		HASH TABLES AND OTHER DATA STRUCTURES
-   ============================================================================
-*/
-NONSTD_API int32_t msi_ht_lookup(uint64_t hash, int exp, int32_t idx);
-// MSI hash table, see https://nullprogram.com/blog/2022/08/08/
-// Compute the next candidate index. Initialize idx to the hash.
-
-NONSTD_API uint64_t hash_cstr_FNV1a(const char *s, int len);
-// FNV-1a hash function (useful for strings)
-
-NONSTD_API uint64_t hash_i64(int64_t x);
-// Hashes an int64 with FNV-1a, as though it were a byte string
-
-NONSTD_API uint64_t hash_u64(uint64_t x);
-// Hashes a uint64 with FNV-1a, as though it were a byte string
-
-
-/* 
-   ============================================================================
 		SORTING AND SHUFFLING
    ============================================================================
 */
@@ -268,68 +249,15 @@ int main(void)
 */
 
 
-/* 
-   ============================================================================
-		ERROR HANDLING
-   ============================================================================
-*/
-
-
-
-/*
-	die(), warning() and logmsg() provide convenient printf-like functions to emit 
-	messages. They do the familiar printf-like formatting to build a string, 
-	and then they call error_messge(), warning_message(), or info_message() respectively.
-	die() and warning() automatically include strerror(errno). die() terminates the program.
-
-	The aforementioned functions are suitable for messages up to 1000 characters. Longer
-	messages will be truncated.
-
-	error_message(), warning_message() and info_message() can be overridden by the user.
-	In the translation unit where you include nonstd.h, define NONSTD_OVERRIDE_MESSAGE_FUNCTIONS
-	and then provide your own definitions for the three. Default implementations are provided.
-	The defaults:
-	- error_message() sends the message to stderr
-	- warning_message() sends the message to stderr
-        - info_message() sends the message to stdout	
-	- all three append a newline.
-
-    If you wish, you can define NONSTD_BREAKPOINT_DIE to put a BREAKPOINT() at the end of die()
-*/
-
-#ifdef __cplusplus
-#define _Noreturn [[noreturn]]
-#endif
-
-NONSTD_API _Noreturn void 
-#if defined(__clang__) || defined(__GNUC__)
-__attribute__ ((format (printf, 1, 2)))
-#endif
-die (const char *fmt, ...);
-
-NONSTD_API void 
-#if defined(__clang__) || defined(__GNUC__)
-__attribute__ ((format (printf, 1, 2)))
-#endif
-warning (const char *fmt, ...);
-
-NONSTD_API void 
-#if defined(__clang__) || defined(__GNUC__)
-__attribute__ ((format (printf, 1, 2)))
-#endif
-logmsg (const char *fmt, ...);
-
-NONSTD_API  void error_message   (const char * str);
-NONSTD_API  void warning_message (const char * str);
-NONSTD_API  void info_message    (const char * str);
-
-
 
 /* 
    ============================================================================
 		STRING TOOLS
    ============================================================================
 */
+
+NONSTD_API uint64_t hash_cstr_FNV1a(const char *s, int len);
+// FNV-1a hash function (useful for strings)
 
 
 ///////////   GENERAL ASCII TOOLS
@@ -575,6 +503,67 @@ NONSTD_API int32_t str_parse_int32(Str *s, const char **errmsg);
 // error (including overflow). If `errmsg` points to a nonzero value on entry,
 // the function is a no-op and returns zero.
 
+
+
+
+
+
+/* 
+   ============================================================================
+		ERROR HANDLING
+   ============================================================================
+*/
+
+
+
+/*
+	die(), warning() and logmsg() provide convenient printf-like functions to emit 
+	messages. They do the familiar printf-like formatting to build a string, 
+	and then they call error_messge(), warning_message(), or info_message() respectively.
+	die() and warning() automatically include strerror(errno). die() terminates the program.
+
+	The aforementioned functions are suitable for messages up to 1000 characters. Longer
+	messages will be truncated.
+
+	error_message(), warning_message() and info_message() can be overridden by the user.
+	In the translation unit where you include nonstd.h, define NONSTD_OVERRIDE_MESSAGE_FUNCTIONS
+	and then provide your own definitions for the three. Default implementations are provided.
+	The defaults:
+	- error_message() sends the message to stderr
+	- warning_message() sends the message to stderr
+        - info_message() sends the message to stdout	
+	- all three append a newline.
+
+    If you wish, you can define NONSTD_BREAKPOINT_DIE to put a BREAKPOINT() at the end of die()
+*/
+
+#ifdef __cplusplus
+#define _Noreturn [[noreturn]]
+#endif
+
+NONSTD_API _Noreturn void 
+#if defined(__clang__) || defined(__GNUC__)
+__attribute__ ((format (printf, 1, 2)))
+#endif
+die (const char *fmt, ...);
+
+NONSTD_API void 
+#if defined(__clang__) || defined(__GNUC__)
+__attribute__ ((format (printf, 1, 2)))
+#endif
+warning (const char *fmt, ...);
+
+NONSTD_API void 
+#if defined(__clang__) || defined(__GNUC__)
+__attribute__ ((format (printf, 1, 2)))
+#endif
+logmsg (const char *fmt, ...);
+
+NONSTD_API  void error_message   (const char * str);
+NONSTD_API  void warning_message (const char * str);
+NONSTD_API  void info_message    (const char * str);
+
+
 /* 
    ============================================================================
 		LAZY MEMORY MANAGEMENT
@@ -667,18 +656,31 @@ NONSTD_API  Arena malloc_arena(ptrdiff_t cap);
 // retain a copy of the "start" pointer you get from this function, and pass that to free()
 
 
-/*
+/* 
    ============================================================================
-		HASH MAPS
+		HASH TABLES AND OTHER DATA STRUCTURES
    ============================================================================
-
-   Credit to Chris Wellons (https://nullprogram.com/) and NRK (https://nrk.neocities.org/) 
-   for the hash map design.
-
 */
 
 
-///////////   HASH MAPS  ////////////
+///////////   'MSI' HASH TABLE  ////////////
+// See https://nullprogram.com/blog/2022/08/08/
+// Credit to Chris Wellons
+
+NONSTD_API int32_t msi_ht_lookup(uint64_t hash, int exp, int32_t idx);
+// MSI hash table, see https://nullprogram.com/blog/2022/08/08/
+// Compute the next candidate index. Initialize idx to the hash.
+
+NONSTD_API uint64_t hash_i64(int64_t x);
+// Hashes an int64 with FNV-1a, as though it were a byte string
+// Uses `hash_cstr_FNV1a` from the STRING TOOLS section, above
+
+NONSTD_API uint64_t hash_u64(uint64_t x);
+// Hashes a uint64 with FNV-1a, as though it were a byte string
+// Uses `hash_cstr_FNV1a` from the STRING TOOLS section, above
+
+
+///////////   HASH MAP  ////////////
 // 
 // This section offers implementations of a hash map which is designed to be used with the Arena
 // allocator. It is not thread safe. It can be "intrusive" (i.e. embedded in a user value struct)
@@ -700,6 +702,9 @@ NONSTD_API  Arena malloc_arena(ptrdiff_t cap);
 // You can supply your own key type, but if you do so you must also supply a hash function, an equals function,
 // and a function to copy a key into an areana. By default, the key type is a null terminated c-string (char*),
 // and the hash function is FNV-1a.
+//
+// Design credit to Chris Wellons (https://nullprogram.com/) and NRK (https://nrk.neocities.org/)
+//
 #ifndef HASH_MAP_KEY_TYPE
   #ifndef NONSTD_HASHMAP_POLICY_USE_NONSTD_STR
     #define HASH_MAP_KEY_TYPE const char*
@@ -775,8 +780,6 @@ NONSTD_API void *intrusive_hash_map_upsert_general(
 #define ihm_upsert_ex(hm, key, a, Type, member, flags, insert_count) \
 	intrusive_hash_map_upsert_general(hm, key, a, (ptrdiff_t)offsetof(Type, member), (ptrdiff_t)sizeof(Type), (ptrdiff_t)alignof(Type), (flags), (insert_count))
 // Extended version of ihm_upsert, which accepts a flags argument and an optional insert_count argument.
-
-
 
 #endif 
 /* 
