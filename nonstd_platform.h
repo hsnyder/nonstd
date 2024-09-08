@@ -169,10 +169,10 @@ NONSTD_PLATFORM_API void ticket_mutex_unlock(TicketMutex *m);
 	} OSMutex;
 #else
 #include <pthread.h>
-typedef struct OSMutex {
-	pthread_mutex_t m;
-	int init;
-} OSMutex;
+	typedef struct OSMutex {
+		pthread_mutex_t m;
+		int init;
+	} OSMutex;
 #endif
 
 
@@ -186,6 +186,8 @@ NONSTD_PLATFORM_API void os_mutex_unlock(OSMutex *m);
 
 NONSTD_PLATFORM_API void os_mutex_init(OSMutex *m);
 // Calls the OS-specific initialization routine for the mutex.
+NONSTD_PLATFORM_API void os_mutex_destroy(OSMutex *m);
+// Calls the OS-specific deinitialization routine for the mutex.
 
 
 
@@ -460,13 +462,38 @@ ticket_mutex_unlock(TicketMutex *m)
 
 
 #ifdef _WIN32
-NONSTD_PLATFORM_API void os_mutex_init(OSMutex *m) { InitializeCriticalSection(&m->m); }
-NONSTD_PLATFORM_API void os_mutex_lock_(OSMutex *m) { EnterCriticalSection(&m->m); }
-NONSTD_PLATFORM_API void os_mutex_unlock_(OSMutex *m) { LeaveCriticalSection(&m->m); }
+NONSTD_PLATFORM_API void os_mutex_init(OSMutex *m) { 
+	InitializeCriticalSection(&m->m); 
+	m->init = 2;
+}
+NONSTD_PLATFORM_API void os_mutex_destroy(OSMutex *m) { 
+	DeleteCriticalSection(&m->m); 
+	m->init = 0;
+}
+NONSTD_PLATFORM_API void os_mutex_lock_(OSMutex *m) { 
+	EnterCriticalSection(&m->m); 
+}
+NONSTD_PLATFORM_API void os_mutex_unlock_(OSMutex *m) { 
+	LeaveCriticalSection(&m->m); 
+}
 #else
-NONSTD_PLATFORM_API void os_mutex_init(OSMutex *m) { m->m = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER; }
-NONSTD_PLATFORM_API void os_mutex_lock_(OSMutex *m) { int rc = pthread_mutex_lock(&m->m); assert(rc==0); }
-NONSTD_PLATFORM_API void os_mutex_unlock_(OSMutex *m) { int rc = pthread_mutex_unlock(&m->m); assert(rc==0); }
+NONSTD_PLATFORM_API void os_mutex_init(OSMutex *m) { 
+	m->m = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER; 
+	m->init = 2; 
+}
+NONSTD_PLATFORM_API void os_mutex_destroy(OSMutex *m) { 
+	int rc = pthread_mutex_destroy(&m->m); 
+	assert(rc==0); 
+	m->init = 0; 
+}
+NONSTD_PLATFORM_API void os_mutex_lock_(OSMutex *m) { 
+	int rc = pthread_mutex_lock(&m->m); 
+	assert(rc==0); 
+}
+NONSTD_PLATFORM_API void os_mutex_unlock_(OSMutex *m) { 
+	int rc = pthread_mutex_unlock(&m->m); 
+	assert(rc==0); 
+}
 #endif
 
 NONSTD_PLATFORM_API void os_mutex_lock(OSMutex *m)
