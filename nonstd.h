@@ -5,6 +5,11 @@
 	Nonstd is an attempt to fill in some of the gaps in the C standard library
 	and increase the convenience of programming in C.
 
+	nonstd.h contains functions that only depend on th C standard libarary and
+	therefore should be portable between operating systems, compilers, and 
+	CPU architectures. nonstd_platform.h contains additional features which 
+	depend on platform-specific features or system libraries.
+
 	nonstd.h is a single-header library. To use it: 
 	- Copy it into your project,
 	- Include the header as necessary,
@@ -456,7 +461,10 @@ typedef struct Str {
 } Str;
 
 static Str mkstr(char *ptr, int len) {return (Str){ptr,len};}
-#define cstr(string_literal) (Str){(string_literal),sizeof(string_literal)-1}
+#define cstr(string_literal) (Str){(char*)(string_literal),sizeof(string_literal)-1}
+
+static uint64_t hash_str_FNV1a(Str s) {return hash_cstr_FNV1a(s.ptr, s.len);}
+// Hashes a Str with FNV-1a
 
 NONSTD_API Str str_strip(Str s);
 // Returns a copy of s where leading and trailing ASCII whitespace have been removed.
@@ -497,9 +505,6 @@ NONSTD_API int str_pattern_match(Str *match, Str *string, CompiledStrPattern *pr
 // the actual match. Returns 1 if a match was found, 0 if it was not (or if 
 // the program contains an error).
 
-static uint64_t hash_str_FNV1a(Str s) {return hash_cstr_FNV1a(s.ptr, s.len);}
-// Hashes a Str with FNV-1a
-
 NONSTD_API int64_t str_parse_int64(Str *s, const char **errmsg);
 NONSTD_API int32_t str_parse_int32(Str *s, const char **errmsg);
 // Parses an integer from the string. Skips leading whitespace, and will
@@ -529,15 +534,15 @@ NONSTD_API int32_t str_parse_int32(Str *s, const char **errmsg);
 	die(), warning() and logmsg() provide convenient printf-like functions to emit 
 	messages. They do the familiar printf-like formatting to build a string, 
 	and then they call error_messge(), warning_message(), or info_message() respectively.
-	die() and warning() automatically include strerror(errno). die() terminates the program.
+	die() terminates the program.
 
-	The aforementioned functions are suitable for messages up to 1000 characters. Longer
-	messages will be truncated.
+	die(), warning() and logmsg() use internal buffers 1000 bytes in length, so
+	longer messages will be truncated.
 
 	error_message(), warning_message() and info_message() can be overridden by the user.
-	In the translation unit where you include nonstd.h, define NONSTD_OVERRIDE_MESSAGE_FUNCTIONS
-	and then provide your own definitions for the three. Default implementations are provided.
-	The defaults:
+	In the translation unit where you include the implementation for nonstd.h, 
+	define NONSTD_OVERRIDE_MESSAGE_FUNCTIONS and then provide your own definitions. 
+	By default:
 	- error_message() sends the message to stderr
 	- warning_message() sends the message to stderr
         - info_message() sends the message to stdout	
@@ -546,27 +551,27 @@ NONSTD_API int32_t str_parse_int32(Str *s, const char **errmsg);
     If you wish, you can define NONSTD_BREAKPOINT_DIE to put a BREAKPOINT() at the end of die()
 */
 
+
 #ifdef __cplusplus
-#define _Noreturn [[noreturn]]
+#define NONSTD_NORETURN [[noreturn]]
+#else
+#define NONSTD_NORETURN _Noreturn
 #endif
 
-NONSTD_API _Noreturn void 
 #if defined(__clang__) || defined(__GNUC__)
-__attribute__ ((format (printf, 1, 2)))
+#define NONSTD_PRINTF_LIKE(a,b) __attribute__ ((format (printf, a, b)))
+#else
+#define NONSTD_PRINTF_LIKE(a,b)
 #endif
-die (const char *fmt, ...);
 
-NONSTD_API void 
-#if defined(__clang__) || defined(__GNUC__)
-__attribute__ ((format (printf, 1, 2)))
-#endif
-warning (const char *fmt, ...);
+NONSTD_API NONSTD_NORETURN NONSTD_PRINTF_LIKE(1,2)
+void die (const char *fmt, ...);
 
-NONSTD_API void 
-#if defined(__clang__) || defined(__GNUC__)
-__attribute__ ((format (printf, 1, 2)))
-#endif
-logmsg (const char *fmt, ...);
+NONSTD_API NONSTD_PRINTF_LIKE(1,2)
+void warning (const char *fmt, ...);
+
+NONSTD_API NONSTD_PRINTF_LIKE(1,2)
+void logmsg (const char *fmt, ...);
 
 NONSTD_API  void error_message   (const char * str);
 NONSTD_API  void warning_message (const char * str);
@@ -615,7 +620,7 @@ NONSTD_API  void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t 
 // If you're allocating an array, supply the number of elements in `count` (otherwise, pass 1). 
 // The flags are optional and can be zero or a bitwise or of the flags defined above.
 
-#ifndef __cplusplus // because C++ doesn't like automatic conversions from void*
+#if !defined(__cplusplus)
 
 	#define ALLOCATE(a, var, count) \
 		((var) = allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)alignof((var)[0]), (count), 0))
@@ -634,9 +639,9 @@ NONSTD_API  void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t 
 
 #else  // C++ versions of the above
 	#define ALLOCATE(a, var, count) \
-		((var) = (decltype(var))allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)alignof((var)[0]), (count), 0))
+		((var) = (decltype(var))allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)alignof(decltype((var)[0])), (count), 0))
 	#define ALLOCATE_EX(a, var, count, flags) \
-		((var) = (decltype(var))allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)alignof((var)[0]), (count), (flags)))
+		((var) = (decltype(var))allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)alignof(decltype((var)[0])), (count), (flags)))
 #endif
 
 #define ZERO_FILL(array_var, len) memset((array_var), 0, sizeof((array_var)[0])*(len))
@@ -810,7 +815,6 @@ NONSTD_API void *intrusive_hash_map_upsert_general(
 #include <stdlib.h>
 #include <limits.h>
 #include <inttypes.h>
-#include <errno.h>
 #include <stdarg.h>
 
 NONSTD_API int32_t 

@@ -5,6 +5,12 @@
 	Nonstd is an attempt to fill in some of the gaps in the C standard library
 	and increase the convenience of programming in C.
 
+	nonstd.h contains functions that only depend on th C standard libarary and
+	therefore should be portable between operating systems, compilers, and 
+	CPU architectures. nonstd_platform.h contains additional features which 
+	depend on platform-specific features or system libraries.
+
+
 	nonstd_platform.h is a single-header library. To use it: 
 	- Copy it into your project,
 	- Include the header as necessary,
