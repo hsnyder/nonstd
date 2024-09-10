@@ -966,11 +966,8 @@ shuffle_step(FisherYatesShuffle *state, int N)
 
 
 
-NONSTD_API _Noreturn void 
-#if defined(__clang__) || defined(__GNUC__)
-__attribute__ ((format (printf, 1, 2)))
-#endif
-die (const char *fmt, ...)
+NONSTD_API NONSTD_NORETURN NONSTD_PRINTF_LIKE(1,2) 
+void die (const char *fmt, ...)
 {
 	char buf[1000] = {0};
 	memcpy(buf,"DIE: ",5);
@@ -985,11 +982,8 @@ die (const char *fmt, ...)
 exit(EXIT_FAILURE);
 }
 
-NONSTD_API void 
-#if defined(__clang__) || defined(__GNUC__)
-__attribute__ ((format (printf, 1, 2)))
-#endif
-warning (const char *fmt, ...)
+NONSTD_API NONSTD_PRINTF_LIKE(1,2) 
+void warning (const char *fmt, ...)
 {
 	char buf[1000] = {0};
 	memcpy(buf,"WARNING: ",9);
@@ -1000,11 +994,8 @@ warning (const char *fmt, ...)
 	warning_message(buf);
 }
 
-NONSTD_API void 
-#if defined(__clang__) || defined(__GNUC__)
-__attribute__ ((format (printf, 1, 2)))
-#endif
-logmsg (const char *fmt, ...)
+NONSTD_API NONSTD_PRINTF_LIKE(1,2) 
+void logmsg (const char *fmt, ...)
 {
 	char buf[1000]  = {0};
 	va_list args;
