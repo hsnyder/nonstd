@@ -13,6 +13,12 @@
 		#define NONSTD_IMPLEMENTATION
 		#include "nonstd.h"
 
+	
+	A few functions use math.h, but on some platforms (e.g. Linux), this
+	forces you to link with libm even if you aren't using those functions.
+	If you define NONSTD_NO_MATH_H, functions relying on math.h will be
+	compiled out.
+
 
 */
 
@@ -150,6 +156,8 @@ static float randuf_pcg32 (uint64_t state[1]) {return randu_pcg32(state);}
 // Generate a random double/float, uniform distribution [0,1]. 
 // Permuted congruential generator (32-bit)
 
+#if !defined(NONSTD_NO_MATH_H)
+
 NONSTD_API double randn_pcg32 (uint64_t state[1]);
 static float randnf_pcg32 (uint64_t state[1]) {return randn_pcg32(state);}
 // Generate a random double/float, normal distribution. 
@@ -160,6 +168,7 @@ static float randpf_pcg32 (uint64_t state[1], float lambda) {return randp_pcg32(
 // Generate a random double, poisson distribution. 
 // Permuted congruential generator (32-bit)
 
+#endif
 
 
 /* 
@@ -799,7 +808,6 @@ NONSTD_API void *intrusive_hash_map_upsert_general(
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 #include <limits.h>
 #include <inttypes.h>
 #include <errno.h>
@@ -858,6 +866,8 @@ randu_pcg32 (uint64_t state[1])
 	return rand_pcg32(state)/((double)UINT32_MAX);
 }
 
+#if !defined(NONSTD_NO_MATH_H)
+#include <math.h>
 NONSTD_API double 
 randn_pcg32 (uint64_t state[1])
 {
@@ -885,6 +895,7 @@ randp_pcg32 (uint64_t state[1], double lambda)
 	} while (p > L);
 	return --k;
 }
+#endif
 
 NONSTD_API int
 bubblesort_step (BubbleSort *state, int N)
@@ -919,7 +930,7 @@ shuffle_step(FisherYatesShuffle *state, int N)
 	if (i==0) return 0;
 
 	double random = randu_pcg32(&state->rng_state);
-	int j = round(random * i);
+	int j = (random*i) + 0.5; 
 
 	state->a = i;
 	state->b = j;
