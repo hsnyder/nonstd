@@ -53,6 +53,32 @@ typedef uint16_t u16 ;
 typedef uint32_t u32 ;
 typedef uint64_t u64 ;
 
+
+// Define STATIC_ASSERT macro based on the C or C++ standard
+#if defined(__cplusplus)
+// If compiling with C++
+  #if __cplusplus >= 201103L
+    // C++11 or later: Use the native static_assert
+    #define STATIC_ASSERT(cond, msg) static_assert(cond, msg)
+  #else
+    // Pre-C++11: STATIC_ASSERT is not defined
+  #endif
+#elif defined(__STDC_VERSION__)
+// If compiling with C
+  #if __STDC_VERSION__ >= 202304L
+    // C23 or later: Use the native static_assert
+    #define STATIC_ASSERT(cond, msg) static_assert(cond, msg)
+  #elif __STDC_VERSION__ >= 201112L
+    // C11 or later (but before C23): Use the native _Static_assert
+    #define STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
+  #else
+    // Pre-C11: STATIC_ASSERT is not defined
+  #endif
+#else
+  // Neither C++ nor C standards are detected
+#endif
+
+
 #if defined(_MSC_VER)
 #  define BREAKPOINT() __debugbreak()
 #elif defined(__GNUC__) || defined(__clang__)
