@@ -78,6 +78,26 @@ typedef uint64_t u64 ;
   // Neither C++ nor C standards are detected
 #endif
 
+// A macro for determining the alignment requirement of the result of an expression
+#if defined(__cplusplus)
+  // Use alignof and decltype in C++
+  #define ALIGNOF_EXPR(expr) alignof(decltype(expr))
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202311L
+  // C23 or later: Use standard alignof operator
+  #define ALIGNOF_EXPR(expr) alignof(expr)
+#elif defined(__GNUC__) || defined(__clang__)
+  // Use GNU extension __alignof__
+  #define ALIGNOF_EXPR(expr) __alignof__(expr)
+#elif defined(_MSC_VER)
+  // Use MSVC-specific __alignof
+  #define ALIGNOF_EXPR(expr) __alignof(expr)
+#else
+  // Fallback for compilers without alignment support
+  #define ALIGNOF_EXPR(expr) sizeof(void *)
+  #pragma message("ALIGNOF_EXPR() using sizeof(void *); alignment may be incorrect. This will affect the ALLOCATE() macros")
+#endif
+
+
 
 #if defined(_MSC_VER)
 #  define BREAKPOINT() __debugbreak()
@@ -649,7 +669,7 @@ NONSTD_API  void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t 
 #if !defined(__cplusplus)
 
 	#define ALLOCATE(a, var, count) \
-		((var) = allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)alignof((var)[0]), (count), 0))
+		((var) = allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)ALIGNOF_EXPR((var)[0]), (count), 0))
 	// Convenience macro for allocating an array in an arena.
 	// You can of course pass 1 for the count if you just want a single object.
 	// Examples:
@@ -660,7 +680,7 @@ NONSTD_API  void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t 
 	//	    float *other_array = ALLOCATE(&arena, other_array, N*M);
 
 	#define ALLOCATE_EX(a, var, count, flags) \
-		((var) = allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)alignof((var)[0]), (count), (flags)))
+		((var) = allocate((a), (ptrdiff_t)sizeof((var)[0]), (ptrdiff_t)ALIGNOF_EXPR((var)[0]), (count), (flags)))
 	// Extended version of ALLOCATE, which accepts a flags argument to be passed to allocate()
 
 #else  // C++ versions of the above
