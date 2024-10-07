@@ -708,6 +708,10 @@ NONSTD_API char *allocate_cstrdup(Arena *a, const char *s);
 NONSTD_API Str allocate_strdup(Arena *a, Str s);
 // Copies a string into the specified arena. Destination is null-terminated.
 
+NONSTD_API Str str_append_str(Arena *a, Str s1, Str s2);
+NONSTD_API Str str_append_cstr(Arena *a, Str s1, const char *s2);
+// Appends to s1, yielding a new string
+
 
 NONSTD_API  Arena malloc_arena(ptrdiff_t cap);
 // Creates a new arena with the given capacity, using malloc to allocate the memory.
@@ -1143,6 +1147,18 @@ NONSTD_API Str allocate_strdup(Arena *a, Str s)
 	}
 	INVALID_CODE_PATH();
 }
+
+
+NONSTD_API Str str_append_str(Arena *a, Str s1, Str s2)
+{
+	return allocate_strprintf(a, "%.*s%.*s", s1.len, s1.ptr, s2.len, s2.ptr);
+}
+
+NONSTD_API Str str_append_cstr(Arena *a, Str s1, const char *s2)
+{
+	return allocate_strprintf(a, "%.*s%s", s1.len, s1.ptr, s2);
+}
+
 
 // FNV-1a hashing of null-terminated c-strings
 static uint64_t nonstd_hashmap_hash_cstr(const char *s)
