@@ -37,6 +37,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdalign.h>
+#include <string.h> // memset
 /* 
    ============================================================================
 		TYPEDEFS AND ASSORTED CONVENIENCE MACROS/FUNCTIONS
