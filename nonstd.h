@@ -643,6 +643,11 @@ NONSTD_API  void * xrealloc(void *p, i64 bytes);
    ============================================================================
 
    Some ideas drawn from Chris Wellons's excellent blog (https://nullprogram.com/) 
+
+   NOTE: in the translation unit where you define NONSTD_IMPLEMENTATION, you can 
+   define NONSTD_ALLOCATE_PRE_HOOK and/or NONSTD_ALLOCATE_POST_HOOK as functions
+   with the same signature as allocate(). The PRE hook will be called at the start
+   of allocate() and the POST hook will be called right before allocate() returns.
 */
 
 typedef struct Arena {
@@ -1085,19 +1090,33 @@ NONSTD_API Arena malloc_arena(ptrdiff_t cap)
 	return a;
 }
 
+#ifndef NONSTD_ALLOCATE_PRE_HOOK
+#define NONSTD_ALLOCATE_PRE_HOOK(a,size,align,count,flags) 
+#endif
+
+#ifndef NONSTD_ALLOCATE_POST_HOOK
+#define NONSTD_ALLOCATE_POST_HOOK(a,size,align,count,flags)
+#endif
+
 NONSTD_API void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t count, int flags)
 {
+	NONSTD_ALLOCATE_PRE_HOOK(a,size,align,count,flags);
+
 	ptrdiff_t padding = -(uintptr_t)a->start & (align - 1);
 	ptrdiff_t available = a->one_past_end - a->start - padding;
 
 	if (available < 0 || count > available/size) {
-		if (flags & ALLOC_SOFT_FAIL) return 0;
+		if (flags & ALLOC_SOFT_FAIL) {
+			NONSTD_ALLOCATE_POST_HOOK(a,size,align,count,flags);
+			return 0;
+		}
 		else abort();  
 	}
 
 	void *p = a->start + padding;
 	a->start += padding + count*size;
 
+	NONSTD_ALLOCATE_POST_HOOK(a,size,align,count,flags);
 	if (flags & ALLOC_NO_ZERO) return p;
 	else return memset(p, 0, count*size);
 }
