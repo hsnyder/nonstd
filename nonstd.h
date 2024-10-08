@@ -1136,14 +1136,11 @@ NONSTD_API void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t c
 	a->start += padding + count*size;
 
 	if (flags & ALLOC_NO_ZERO) {
-		NONSTD_ALLOCATE_POST_HOOK(a,size,align,count,flags);
-		return p;
-	}
-	else {
 		memset(p, 0, count*size);
-		NONSTD_ALLOCATE_POST_HOOK(a,size,align,count,flags);
-		return p;
 	}
+
+	NONSTD_ALLOCATE_POST_HOOK(a,size,align,count,flags);
+	return p;
 }
 
 NONSTD_API char* allocate_sprintf(Arena *a, int *len, const char *fmt, ...)
