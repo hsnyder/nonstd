@@ -643,11 +643,6 @@ NONSTD_API  void * xrealloc(void *p, i64 bytes);
    ============================================================================
 
    Some ideas drawn from Chris Wellons's excellent blog (https://nullprogram.com/) 
-
-   NOTE: in the translation unit where you define NONSTD_IMPLEMENTATION, you can 
-   define NONSTD_ALLOCATE_PRE_HOOK and/or NONSTD_ALLOCATE_POST_HOOK as functions
-   with the same signature as allocate(). The PRE hook will be called at the start
-   of allocate() and the POST hook will be called right before allocate() returns.
 */
 
 typedef struct Arena {
@@ -670,6 +665,23 @@ NONSTD_API  void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t 
 // Allocates memory in the arena. Supply the size and alignment of the type you're allocating.
 // If you're allocating an array, supply the number of elements in `count` (otherwise, pass 1). 
 // The flags are optional and can be zero or a bitwise or of the flags defined above.
+
+// NOTE: in the translation unit where you define NONSTD_IMPLEMENTATION, you can 
+// define NONSTD_ALLOCATE_PRE_HOOK and/or NONSTD_ALLOCATE_POST_HOOK as functions
+// with the signatures below. The PRE hook will be called at the start of 
+// allocate() and the POST hook will be called right before allocate() returns.
+//
+// void *pre_hook (Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t count, int flags);
+// void post_hook (Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t count, int flags);
+//
+// If the pre_hook returns 0, allocate() proceeds as normal. If it returns (void*)-1, 
+// allocate will immediately either abort or return NULL, depending on whether the 
+// ALLOC_SOFT_FAIL flag was provided by allocate()'s caller. Any other value will be used
+// as the return value for allocate() and allocate() will return immediately without making
+// any updates to the Arena or calling the post hook. So, if you're using the pre-hook to 
+// override allocate()'s return value, you have to do any post-hook cleanup yourself.
+   
+
 
 #if !defined(__cplusplus)
 
@@ -1091,7 +1103,7 @@ NONSTD_API Arena malloc_arena(ptrdiff_t cap)
 }
 
 #ifndef NONSTD_ALLOCATE_PRE_HOOK
-#define NONSTD_ALLOCATE_PRE_HOOK(a,size,align,count,flags) 
+#define NONSTD_ALLOCATE_PRE_HOOK(a,size,align,count,flags) 0
 #endif
 
 #ifndef NONSTD_ALLOCATE_POST_HOOK
@@ -1100,7 +1112,14 @@ NONSTD_API Arena malloc_arena(ptrdiff_t cap)
 
 NONSTD_API void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t count, int flags)
 {
-	NONSTD_ALLOCATE_PRE_HOOK(a,size,align,count,flags);
+	void *pre_hook_value = NONSTD_ALLOCATE_PRE_HOOK(a,size,align,count,flags);
+	if(pre_hook_value == (void*)-1) {
+		if (flags & ALLOC_SOFT_FAIL) return 0;
+		else abort();  
+	} 
+	else if (pre_hook_value != 0) {
+		return pre_hook_value;
+	}	
 
 	ptrdiff_t padding = -(uintptr_t)a->start & (align - 1);
 	ptrdiff_t available = a->one_past_end - a->start - padding;
@@ -1116,9 +1135,15 @@ NONSTD_API void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t c
 	void *p = a->start + padding;
 	a->start += padding + count*size;
 
-	NONSTD_ALLOCATE_POST_HOOK(a,size,align,count,flags);
-	if (flags & ALLOC_NO_ZERO) return p;
-	else return memset(p, 0, count*size);
+	if (flags & ALLOC_NO_ZERO) {
+		NONSTD_ALLOCATE_POST_HOOK(a,size,align,count,flags);
+		return p;
+	}
+	else {
+		memset(p, 0, count*size);
+		NONSTD_ALLOCATE_POST_HOOK(a,size,align,count,flags);
+		return p;
+	}
 }
 
 NONSTD_API char* allocate_sprintf(Arena *a, int *len, const char *fmt, ...)
