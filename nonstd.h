@@ -1102,11 +1102,8 @@ NONSTD_API void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t c
 	void *p = a->start + padding;
 	a->start += padding + count*size;
 
-	if (flags & ALLOC_NO_ZERO) {
-		memset(p, 0, count*size);
-	}
-
-	return p;
+	if (flags & ALLOC_NO_ZERO) return p;
+	return memset(p, 0, count*size);
 }
 
 NONSTD_API char* allocate_sprintf(Arena *a, int *len, const char *fmt, ...)
