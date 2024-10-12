@@ -531,9 +531,11 @@ NONSTD_API Str str_split_str(Str* s, Str delim, int *more_tokens);
 // to indicate whether `s` contains more tokens (use as a loop stopping condition).
 
 NONSTD_API int str_equals(Str a, Str b);
+NONSTD_API int str_equals_cstr(Str a, const char *b);
 // Returns 1 if `a` and `b` are equal, 0 otherwise
 
 NONSTD_API int str_equals_ci(Str a, Str b);
+NONSTD_API int str_equals_cstr_ci(Str a, const char *b);
 // Case-insensitive version of str_equals, but assumes `a` and `b` are ASCII.
 
 NONSTD_API int str_startswith(Str s, Str startswith);
@@ -2029,6 +2031,12 @@ str_equals(Str a, Str b)
 	return 0;
 }
 
+NONSTD_API int 
+str_equals_cstr(Str a, const char *b)
+{
+	return str_equals(a,mkstr((char*)b,strlen(b)));	
+}
+
 NONSTD_API int
 str_equals_ci(Str a, Str b)
 {
@@ -2042,6 +2050,12 @@ str_equals_ci(Str a, Str b)
 		return 1;
 	}
 	return 0;
+}
+
+NONSTD_API int
+str_equals_cstr_ci(Str a, const char *b)
+{
+	return str_equals_ci(a,mkstr((char*)b,strlen(b)));
 }
 
 NONSTD_API int
