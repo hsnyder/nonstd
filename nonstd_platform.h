@@ -36,45 +36,6 @@
 
 /* 
    ============================================================================
-		BINARY DATA INCLUSION
-   ============================================================================
-*/
-
-#if (defined(__GNUC__) || defined(__clang__))
-#if defined(__linux__) || defined(__OPENBSD__) || defined(__FreeBSD__) || defined(__NetBSD__)
-
-
-#define EMBED_FILE(file, symbol, section, align) __asm (\
-    ".section " #section        "\n" \
-    ".balign " #align           "\n" \
-    ".global " #symbol          "\n" \
-    #symbol ":                   \n" \
-    ".incbin \"" file "\"        \n" \
-    ".global " #symbol "_size    \n" \
-    ".set " #symbol "_size, . - " #symbol "\n" \
-    ".balign 16                  \n" \
-    ".section \".text\"          \n"); \
-    extern const char symbol [], symbol ## _size [];
-
-// USAGE
-//
-//   Do this outside a function in global scope:
-//
-//     EMBED_FILE("myfile.txt", myfile, "text", 64);
-//
-//   And then where you want the data:
-//     
-//     write(fd, myfile, (size_t) myfile_size); // or whatever
-//
-//   The 'align' argument specifies the alignment of the embedded data.
-//   Choose an alignment that matches your platform's requirements or
-//   the data access patterns you expect (e.g., 16 for SIMD operations).
-
-#endif
-#endif
-
-/* 
-   ============================================================================
 		CPU FEATURE DETECTION
    ============================================================================
 */
