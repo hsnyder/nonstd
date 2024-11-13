@@ -517,18 +517,17 @@ NONSTD_API Str str_strip(Str s);
 // Returns a copy of s where leading and trailing ASCII whitespace have been removed.
 
 NONSTD_API int str_pop_str(Str* s, Str what);
+NONSTD_API int str_pop_cstr(Str* s, const char *what);
 // If `s` starts with the substring `what`, updates `s` to point past `what` and returns 1.
 // Otherwise, returns 0 and `s` is unchanged.
 
 NONSTD_API Str str_split(Str* s, char delim, int *more_tokens);
+NONSTD_API Str str_split_str(Str* s, Str delim, int *more_tokens);
+NONSTD_API Str str_split_cstr(Str* s, const char *delim, int *more_tokens);
 // Pops the first substring (delimited by `delim`) off of `s` (modifying it).
 // `more_tokens` is optional (null-safe). If provided, it will be set to 1 or 0 
 // to indicate whether `s` contains more tokens (use as a loop stopping condition).
 
-NONSTD_API Str str_split_str(Str* s, Str delim, int *more_tokens);
-// Pops the first substring (delimited by `delim`) off of `s` (modifying it).
-// `more_tokens` is optional (null-safe). If provided, it will be set to 1 or 0 
-// to indicate whether `s` contains more tokens (use as a loop stopping condition).
 
 NONSTD_API int str_equals(Str a, Str b);
 NONSTD_API int str_equals_cstr(Str a, const char *b);
@@ -539,9 +538,11 @@ NONSTD_API int str_equals_cstr_ci(Str a, const char *b);
 // Case-insensitive version of str_equals, but assumes `a` and `b` are ASCII.
 
 NONSTD_API int str_startswith(Str s, Str startswith);
+NONSTD_API int str_startswith_cstr(Str s, const char *startswith);
 // Returns 1 if `s` begins with `startswith`, 0 otherwise
 
 NONSTD_API int str_endswith(Str s, Str endswith);
+NONSTD_API int str_endswith_cstr(Str s, const char *endswith);
 // Returns 1 if `s` ends with `endswith`, 0 otherwise
 
 NONSTD_API int str_search(Str haystack, Str needle);
@@ -1978,6 +1979,12 @@ str_pop_str(Str* s, Str what)
 	}
 }
 
+NONSTD_API int
+str_pop_cstr(Str* s, const char *what)
+{
+	return str_pop_str(s, mkstr((char*)what,strlen(what)));
+}
+
 NONSTD_API Str
 str_split(Str* s, char delim, int *more_tokens)
 {
@@ -2016,6 +2023,12 @@ str_split_str(Str* s, Str delim, int *more_tokens)
 		if(more_tokens) *more_tokens=0;
 		return rtn;
 	}
+}
+
+NONSTD_API Str 
+str_split_cstr(Str* s, const char *delim, int *more_tokens)
+{
+	return str_split_str(s, mkstr((char*)delim, strlen(delim)), more_tokens);
 }
 
 NONSTD_API int 
@@ -2096,6 +2109,12 @@ str_startswith(Str s, Str startswith)
 }
 
 NONSTD_API int
+str_startswith_cstr(Str s, const char *startswith)
+{
+	return str_startswith(s, mkstr((char*)startswith, strlen(startswith)));
+}
+
+NONSTD_API int
 str_endswith(Str s, Str endswith)
 {
 	if (s.len >= endswith.len) {
@@ -2107,6 +2126,11 @@ str_endswith(Str s, Str endswith)
 	nope: return 0;
 }
 
+NONSTD_API int
+str_endswith_cstr(Str s, const char *endswith)
+{
+	return str_endswith(s, mkstr((char*)endswith, strlen(endswith)));
+}
 
 NONSTD_API int64_t 
 str_parse_int64(Str *s, const char **errmsg)
