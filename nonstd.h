@@ -108,6 +108,14 @@ typedef uint64_t u64 ;
 #  define BREAKPOINT() do{*(volatile int*)0=0;}while(0)
 #endif
 
+// define our assert
+#ifdef DISABLE_ASSERTIONS
+#  define ASSERT(c)
+#else
+#  define ASSERT(c) if(!(c)){BREAKPOINT();}
+#endif
+
+// mild effort to take over the standard one too
 #if !defined(assert) || defined(NONSTD_FORCE_ASSERT)
 #  ifdef DISABLE_ASSERTIONS
 #    define assert(c)
@@ -116,7 +124,7 @@ typedef uint64_t u64 ;
 #  endif
 #endif
 
-#define INVALID_CODE_PATH() assert(!"Invalid code path");
+#define INVALID_CODE_PATH() ASSERT(!"Invalid code path");
 
 #define ssizeof(x) ((i64)sizeof(x))
 #define COUNT_ARRAY(x) (ssizeof(x)/ssizeof(x[0]))
@@ -167,9 +175,9 @@ partition (int N, int P, int i)
 // If partitioning N items into P partitions, this returns 
 // the number of items in the i-th partition (i from 0 to P-1)
 {
-	assert(i >= 0 && i < P);
-	assert(N >= 0);
-	assert(P >= 0);
+	ASSERT(i >= 0 && i < P);
+	ASSERT(N >= 0);
+	ASSERT(P >= 0);
 
 	int r = N % P;
 	int m = (N / P) + (r != 0);
@@ -182,9 +190,9 @@ partition64 (i64 N, i64 P, i64 i)
 // If partitioning N items into P partitions, this returns 
 // the number of items in the i-th partition (i from 0 to P-1)
 {
-	assert(i >= 0 && i < P);
-	assert(N >= 0);
-	assert(P >= 0);
+	ASSERT(i >= 0 && i < P);
+	ASSERT(N >= 0);
+	ASSERT(P >= 0);
 
 	i64 r = N % P;
 	i64 m = (N / P) + (r != 0);
@@ -670,6 +678,8 @@ NONSTD_API  void *allocate(Arena *a, ptrdiff_t size, ptrdiff_t align, ptrdiff_t 
 // If you're allocating an array, supply the number of elements in `count` (otherwise, pass 1). 
 // The flags are optional and can be zero or a bitwise or of the flags defined above.
 
+#define NEW(a, type) ((type*)allocate((a), sizeof(type), alignof(type), 1, 0))
+#define NEW_EX(a, type, flags) ((type*)allocate((a), sizeof(type), alignof(type), 1, flags))
 
 #if !defined(__cplusplus)
 
@@ -1552,7 +1562,7 @@ static int
 pattern_machine_run(PatternMachineState *m)
 {
        	while(1) {
-		assert(m->program_counter < m->program->code_size);
+		ASSERT(m->program_counter < m->program->code_size);
 
 		unsigned short instr  = m->program->code[m->program_counter];
 		unsigned short opcode = instr & OP_MASK;
@@ -1571,7 +1581,7 @@ pattern_machine_run(PatternMachineState *m)
 				else {
 					m->stack_pointer--;
 					m->program_counter = m->stack[--(m->stack_pointer)];
-					assert(m->stack_pointer >= 0);
+					ASSERT(m->stack_pointer >= 0);
 				}
 			} else {
 				ret_no:
@@ -1581,7 +1591,7 @@ pattern_machine_run(PatternMachineState *m)
 				else {
 					m->input_counter   = m->stack[--(m->stack_pointer)];
 					m->program_counter = m->stack[--(m->stack_pointer)];
-					assert(m->stack_pointer >= 0);
+					ASSERT(m->stack_pointer >= 0);
 				}
 			}
 			break;
@@ -1596,20 +1606,20 @@ pattern_machine_run(PatternMachineState *m)
 			}
 			break;
 		case OP_MATCH_OR_RET_F:
-			assert(arg < 128);
+			ASSERT(arg < 128);
 			if(pattern_machine_get_input(m) == c) 
 				pattern_machine_advance_input(m);
 			else goto ret_no;
 			break;
 		case OP_MATCH_AND_RET_T:
-			assert(arg < 128);
+			ASSERT(arg < 128);
 			if(pattern_machine_get_input(m) == c) {
 				pattern_machine_advance_input(m);
 				goto ret_yes;
 			}
 			break;
 		case OP_MATCH_AND_RET_F:
-			assert(arg < 128);
+			ASSERT(arg < 128);
 			if(pattern_machine_get_input(m) == c) {
 				pattern_machine_advance_input(m);
 				goto ret_no;
@@ -1617,12 +1627,12 @@ pattern_machine_run(PatternMachineState *m)
 			break;
 
 		case OP_MATCH:
-			assert(arg < 128);
+			ASSERT(arg < 128);
 			if(pattern_machine_get_input(m) == c)
 				pattern_machine_advance_input(m);
 			break;
 		case OP_MATCH_AND_RPT:
-			assert(arg < 128);
+			ASSERT(arg < 128);
 			if(pattern_machine_get_input(m) == c) {
 				pattern_machine_advance_input(m);
 				m->program_counter--;
@@ -1645,7 +1655,7 @@ pattern_machine_run(PatternMachineState *m)
 		case OP_MATCH_BUILTIN_AND_RET_F:
 		case OP_MATCH_BUILTIN:
 		case OP_MATCH_BUILTIN_AND_RPT:
-			assert(arg < 128);
+			ASSERT(arg < 128);
 			result = 0;
 			input = pattern_machine_get_input(m);
 
@@ -1721,7 +1731,7 @@ pattern_machine_run(PatternMachineState *m)
 					break;
 
 				default:
-					assert(!"Invalid built-in match group");
+					ASSERT(!"Invalid built-in match group");
 					break;
 			}
 
@@ -1738,7 +1748,7 @@ pattern_machine_run(PatternMachineState *m)
 			}
 			break;
 		default:
-			assert(!"Invalid opcode");
+			ASSERT(!"Invalid opcode");
 			return 0;
 			break;
 		}
@@ -1757,7 +1767,7 @@ make_instruction(unsigned short opcode, unsigned short arg)
 static void 
 program_add(unsigned short opcode, unsigned short arg, CompiledStrPattern *program)
 {
-	assert(program);
+	ASSERT(program);
 	if(program->error) return;
 
 	opcode = make_instruction(opcode, arg);

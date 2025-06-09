@@ -450,16 +450,16 @@ NONSTD_PLATFORM_API void os_mutex_init(OSMutex *m) {
 }
 NONSTD_PLATFORM_API void os_mutex_destroy(OSMutex *m) { 
 	int rc = pthread_mutex_destroy(&m->m); 
-	assert(rc==0); 
+	ASSERT(rc==0); 
 	m->init = 0; 
 }
 NONSTD_PLATFORM_API void os_mutex_lock_(OSMutex *m) { 
 	int rc = pthread_mutex_lock(&m->m); 
-	assert(rc==0); 
+	ASSERT(rc==0); 
 }
 NONSTD_PLATFORM_API void os_mutex_unlock_(OSMutex *m) { 
 	int rc = pthread_mutex_unlock(&m->m); 
-	assert(rc==0); 
+	ASSERT(rc==0); 
 }
 #endif
 
@@ -742,7 +742,7 @@ NONSTD_PLATFORM_API void
 semaphore_post(uint32_t *sem)
 {
 	uint32_t v = __atomic_fetch_add(sem, 1, __ATOMIC_RELEASE);
-	assert(v < INT32_MAX);
+	ASSERT(v < INT32_MAX);
 	//if (v == 0) futex_wake_one(sem); // <-- bug
 	//TODO(performance): no syscall if no waiters
 	futex_wake_one(sem);
@@ -754,7 +754,7 @@ blocking_queue_push(BlockingConcurrentQueue *q)
 	semaphore_wait(&q->producer_slots);
 	semaphore_wait(&q->access_semaphore);
 	int i = queue_push(&q->q, q->exp);
-	assert(i >= 0);
+	ASSERT(i >= 0);
 	return i;
 }
 
@@ -772,7 +772,7 @@ blocking_queue_pop(BlockingConcurrentQueue *q)
 	semaphore_wait(&q->consumer_slots);
 	semaphore_wait(&q->access_semaphore);
 	int i = queue_pop(&q->q, q->exp);
-	assert(i >= 0);
+	ASSERT(i >= 0);
 	return i;
 }
 
@@ -797,7 +797,7 @@ blocking_queue_pop_commit(BlockingConcurrentQueue *q)
 NONSTD_PLATFORM_API void
 sleep_ms(int ms)
 {
-	assert(ms >= 0);
+	ASSERT(ms >= 0);
 	struct timespec ts;
 	ts.tv_sec = ms/1000;
 	ts.tv_nsec = (ms % 1000) * 1000000L;
@@ -832,7 +832,7 @@ read_os_timer(void)
 NONSTD_PLATFORM_API void
 sleep_ms(int ms)
 {
-	assert(ms >= 0);
+	ASSERT(ms >= 0);
 	Sleep((unsigned long)ms);
 }
 
@@ -1067,7 +1067,7 @@ unmap_virtual_memory_region(VirtualMemoryRegion vmr)
 	int x = munmap(vmr.start, vmr.size);
 	if(x == -1) return strerror(errno);
 	if(x == 0)  return 0;
-	assert(!"Unreachable");
+	ASSERT(!"Unreachable");
 }
 // allocates a sparse (commit-on-demand) memory region of the given size.
 // technically the size will be rounded to a multiple of the page size. 
@@ -1112,7 +1112,7 @@ static int64_t offset_from_prev_page_boundary(void* addr)
 {
 	int64_t start_of_page = round_down((intptr_t)addr, platform_get_page_size());
 	int64_t rtn_val = ((intptr_t)addr) - start_of_page;
-	assert(rtn_val >= 0);
+	ASSERT(rtn_val >= 0);
 	return rtn_val;
 }
 
