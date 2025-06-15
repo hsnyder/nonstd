@@ -91,6 +91,11 @@ progress_bar_print(ProgressBar *b)
 {
     uint64_t now = read_cpu_timer();
 
+	if(b->first_update_time == 0) {
+		b->first_update_time = now;
+		b->first_update_progress = b->current;
+	}
+
     FILE * f = b->output_stream ? b->output_stream : stderr;
     for (int i = 0; i < b->last_output_len; i++)
             fputc('\b',f);
@@ -136,11 +141,7 @@ progress_bar_print(ProgressBar *b)
     b->last_current = b->current;
     b->last_output_len = (n > 0) ? n : 0;
 	b->last_update_time = now;
-	if(b->first_update_time == 0) {
-		b->first_update_time = now;
-		b->first_update_progress = b->current;
-	}
-
+	fflush(f);
 }
 #endif
 
