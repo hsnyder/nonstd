@@ -102,6 +102,8 @@ progress_bar_print(ProgressBar *b)
 
 	uint64_t delta_ticks = now - b->first_update_time;
 	float delta_seconds = cpu_time_to_sec(delta_ticks);
+	delta_seconds = delta_seconds < 1e-5f ? 1e-5f : delta_seconds;
+
 	int64_t delta_iters = b->current - b->first_update_progress;
 	float it_per_s = delta_iters / delta_seconds;
 
