@@ -185,6 +185,29 @@ partition (int N, int P, int i)
 	return (r == 0 || i < r)  ?  m  :  m-1;
 }
 
+static int
+partition_offset(int N, int P, int i)
+// Returns the starting offset of the i-th partition
+{
+	ASSERT(i >= 0 && i <= P); // <= P is okay to get end offset of last
+	ASSERT(N >= 0);
+	ASSERT(P >= 0);
+
+	int r = N % P;          // Number of larger partitions
+	int base = N / P;       // Base size of each partition
+	int offset;
+
+	if (i <= r) {
+		// Each of the first r partitions gets (base + 1) elements
+		offset = i * (base + 1);
+	} else {
+		// Remaining (P - r) partitions get base elements
+		offset = r * (base + 1) + (i - r) * base;
+	}
+
+	return offset;
+}
+
 static i64 
 partition64 (i64 N, i64 P, i64 i)
 // If partitioning N items into P partitions, this returns 
@@ -1558,6 +1581,12 @@ pattern_machine_advance_input(PatternMachineState *m)
 	m->input_counter++;
 }
 
+#if defined(__GNUC__) || defined(__clang__)
+#define NONSTD_FALLTHROUGH __attribute__((fallthrough))
+#else
+#define NONSTD_FALLTHROUGH
+#endif
+
 static int
 pattern_machine_run(PatternMachineState *m)
 {
@@ -1664,7 +1693,7 @@ pattern_machine_run(PatternMachineState *m)
 			{
 				case '.': result = 1; break;
 
-				case 'A': result = 1;
+				case 'A': result = 1; NONSTD_FALLTHROUGH;
 				case 'a':
 					if (
 					(input >= 'A' && input <= 'Z') ||
@@ -1672,43 +1701,43 @@ pattern_machine_run(PatternMachineState *m)
 					       	result = !result;
 					break;
 
-				case 'C': result = 1;
+				case 'C': result = 1; NONSTD_FALLTHROUGH;
 				case 'c':
 					if(input == 0x7f || (input >= 0 && input <= 0x1f))
 						result = !result;
 					break;
 
-				case 'D': result = 1;
+				case 'D': result = 1; NONSTD_FALLTHROUGH;
 				case 'd':
 					if(input >= '0' && input <='9')
 						result = !result;
 					break;
 
-				case 'L': result = 1;
+				case 'L': result = 1; NONSTD_FALLTHROUGH;
 				case 'l':
 					if(input >= 'a' && input <= 'z')
 						result = !result;
 					break;
 
-				case 'P': result = 1;
+				case 'P': result = 1; NONSTD_FALLTHROUGH;
 				case 'p':
 					if(is_ascii_punctuation(input))
 						result = !result;
 					break;
 
-				case 'S': result = 1;
+				case 'S': result = 1; NONSTD_FALLTHROUGH;
 				case 's':
 					if(is_ascii_whitespace(input))
 						result = !result;	
 					break;
 
-				case 'U': result = 1;
+				case 'U': result = 1; NONSTD_FALLTHROUGH;
 				case 'u':
 					if(input >= 'A' && input <= 'Z')
 						result = !result;
 					break;
 
-				case 'W': result = 1;
+				case 'W': result = 1; NONSTD_FALLTHROUGH;
 				case 'w':
 					if(
 					(input >= '0' && input <= '9') ||
@@ -1717,7 +1746,7 @@ pattern_machine_run(PatternMachineState *m)
 						result = !result;
 					break;
 
-				case 'X': result = 1; 
+				case 'X': result = 1;  NONSTD_FALLTHROUGH;
 				case 'x': if(
 					(input >= '0' && input <= '9') ||
 					(input >= 'A' && input <= 'F') ||
@@ -1725,7 +1754,7 @@ pattern_machine_run(PatternMachineState *m)
 						result = !result;
 					break;
 
-				case 'Z': result = 1;
+				case 'Z': result = 1; NONSTD_FALLTHROUGH;
 				case 'z':
 					if(input==0) result = !result;
 					break;
