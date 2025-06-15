@@ -5,7 +5,7 @@
 #include <stdint.h>
 typedef struct {
     // you can update these at any time
-    int current, maximum;  // required for the bar to work
+    int64_t current, maximum;  // required for the bar to work
 		       // if maximum is 0, only rate info printed
     char prefix_label[32]; // optional, safe to leave zero
     char suffix_label[64]; // optional, safe to leave zero
@@ -14,8 +14,9 @@ typedef struct {
 	int width;
 
     // don't manually edit these
-    int last_current, last_output_len;
-	int first_update_progress;
+	int last_output_len;
+    int64_t last_current;
+	int64_t first_update_progress;
     uint64_t first_update_time;
 	uint64_t last_update_time;
 } ProgressBar;
@@ -69,6 +70,7 @@ int main(void)
 #ifdef NONSTD_PROGRESSBAR_IMPLEMENTATION
 
 #include "nonstd_platform.h" // cpu timer
+#include <inttypes.h>
 			     
 #define NONSTD_PROGRESSBAR_RATELIMIT_TIME_MS 100.0
 #ifndef NONSTD_PROGRESSBAR_FILL_CHARACTER
@@ -95,7 +97,7 @@ progress_bar_print(ProgressBar *b)
 
 	uint64_t delta_ticks = now - b->first_update_time;
 	float delta_seconds = cpu_time_to_sec(delta_ticks);
-	int delta_iters = b->current - b->first_update_progress;
+	int64_t delta_iters = b->current - b->first_update_progress;
 	float it_per_s = delta_iters / delta_seconds;
 
 	if (b->width == 0) b->width = 60;
@@ -110,24 +112,24 @@ progress_bar_print(ProgressBar *b)
 			bar[i] = i <= cutoff ? NONSTD_PROGRESSBAR_FILL_CHARACTER : ' ';
 		if (it_per_s > 1.0f) {
 			if (b->always_show_absolute_progress) {
-				n = fprintf(f, "%s[%s] %i/%i (%.2f it/s) %s", b->prefix_label, bar, b->current, b->maximum, it_per_s, b->suffix_label);
+				n = fprintf(f, "%s[%s] %" PRIi64 "/%" PRIi64 " (%.2f it/s) %s", b->prefix_label, bar, b->current, b->maximum, it_per_s, b->suffix_label);
 			} else {
 				n = fprintf(f, "%s[%s] (%.2f it/s) %s", b->prefix_label, bar, it_per_s, b->suffix_label);
 			}
 		} else {
 			float s_per_it = 1.0f / it_per_s;
 			if (b->always_show_absolute_progress) {
-				n = fprintf(f, "%s[%s] %i/%i (%.2f s/it) %s", b->prefix_label, bar, b->current, b->maximum, s_per_it, b->suffix_label);
+				n = fprintf(f, "%s[%s] %" PRIi64 "/%" PRIi64 " (%.2f s/it) %s", b->prefix_label, bar, b->current, b->maximum, s_per_it, b->suffix_label);
 			} else {
 				n = fprintf(f, "%s[%s] (%.2f s/it) %s", b->prefix_label, bar, s_per_it, b->suffix_label);
 			}
 		}
 	} else {
 		if (it_per_s > 1.0f) {
-			n = fprintf(f, "%s %iit (%.2f it/s) %s", b->prefix_label, b->current, it_per_s, b->suffix_label);
+			n = fprintf(f, "%s %" PRIi64 "it (%.2f it/s) %s", b->prefix_label, b->current, it_per_s, b->suffix_label);
 		} else {
 			float s_per_it = 1.0f / it_per_s;
-			n = fprintf(f, "%s %iit (%.2f s/it) %s", b->prefix_label, b->current, s_per_it, b->suffix_label);
+			n = fprintf(f, "%s %" PRIi64 "it (%.2f s/it) %s", b->prefix_label, b->current, s_per_it, b->suffix_label);
 		}
 	}
 
