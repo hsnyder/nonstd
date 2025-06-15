@@ -11,6 +11,7 @@ typedef struct {
     char suffix_label[64]; // optional, safe to leave zero
     FILE *output_stream;   // optional, defaults to stderr
 	int always_show_absolute_progress;
+	int width;
 
     // don't manually edit these
     int last_current, last_output_len;
@@ -97,12 +98,15 @@ progress_bar_print(ProgressBar *b)
 	int delta_iters = b->current - b->first_update_progress;
 	float it_per_s = delta_iters / delta_seconds;
 
+	if (b->width == 0) b->width = 60;
+	if (b->width > 60) b->width = 60;
+
 	int n = 0;
 	if(b->maximum > 0) {
-		int cutoff = (60.0f * b->current) / b->maximum + 0.5f;
+		int cutoff = ((float)b->width * b->current) / b->maximum + 0.5f;
 
 		char bar[61] = {0};
-		for (int i = 0; i < 60; i++)
+		for (int i = 0; i < b->width; i++)
 			bar[i] = i <= cutoff ? NONSTD_PROGRESSBAR_FILL_CHARACTER : ' ';
 		if (it_per_s > 1.0f) {
 			if (b->always_show_absolute_progress) {
