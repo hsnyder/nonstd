@@ -131,6 +131,13 @@ typedef uint64_t u64 ;
 
 #define MIN(a,b) ((a)>(b)?(b):(a))
 #define MAX(a,b) ((a)>(b)?(a):(b))
+#define CLAMP(x,a,b) ((x)<(a)?(a):((x)>(b)?(b):(x)))
+#define SWAP(a,b) do { \
+	unsigned char swap_temp_[sizeof(a) == sizeof(b) ? (signed int)sizeof(a) : -1]; \
+	memcpy(swap_temp_, &(b), sizeof(a)); \
+	memcpy(&(b), &(a),       sizeof(a)); \
+	memcpy(&(a), swap_temp_, sizeof(a)); \
+	} while(0)
 
 #define CONCATENATE_(a,b) a ## b
 #define CONCATENATE(a,b) CONCATENATE_(a,b)
