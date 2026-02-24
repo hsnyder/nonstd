@@ -310,14 +310,17 @@ int main(void)
 
 
 typedef struct FisherYatesShuffle {
-	u64 rng_state; // set this ahead of time to seed the random state
+	void *rng_ctx; // optional: set this ahead of time to seed the random state
+	double (*rng_fn) (void*); // optional: rng callback
 	// zero-initialize the rest of this struct before the first shuffle_step call
 
 	// after every call, caller should swap elements at positions a and b
 	int a; 
 	int b;
 
-	int priv; // leave this alone
+	// leave these alone
+	int priv; 
+	uint64_t priv2;
 
 } FisherYatesShuffle;
 
@@ -1025,10 +1028,25 @@ NONSTD_API int
 shuffle_step(FisherYatesShuffle *state, int N)
 {
 	if(state->priv == 0) state->priv = N;
+
+	if(state->priv2 == 0 && state->rng_ctx == 0) {
+		// seed the rng if the user provided literally nothing
+		rand_pcg32(&state->priv2);
+		state->priv2 += 0xdeadbeefULL;
+		rand_pcg32(&state->priv2);
+	}
+
 	int i = state->priv - 1;
 	if (i==0) return 0;
 
-	double random = randu_pcg32(&state->rng_state);
+	void *rng_ctx = state->rng_ctx ? 
+		state->rng_ctx : 
+		&state->priv2;
+
+	double random = state->rng_fn ? 
+		state->rng_fn(rng_ctx) : 
+		randu_pcg32((void*)&rng_ctx);
+
 	int j = (random*i) + 0.5; 
 
 	state->a = i;
