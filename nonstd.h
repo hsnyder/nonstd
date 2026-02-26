@@ -1045,7 +1045,7 @@ shuffle_step(FisherYatesShuffle *state, int N)
 
 	double random = state->rng_fn ? 
 		state->rng_fn(rng_ctx) : 
-		randu_pcg32((void*)&rng_ctx);
+		randu_pcg32((uint64_t*)rng_ctx);
 
 	int j = (random*i) + 0.5; 
 
