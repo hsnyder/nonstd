@@ -985,7 +985,7 @@ randn_pcg32 (uint64_t state[1])
 NONSTD_API double 
 randp_pcg32 (uint64_t state[1], double lambda)
 {
-	const double u32max = (float)UINT32_MAX;
+	const double u32max = (double)UINT32_MAX;
 	// poisson distribution random double generator
 	// slow for large lambda
 	int k = 0; 
