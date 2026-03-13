@@ -157,6 +157,29 @@ NONSTD_PLATFORM_API void os_mutex_destroy(OSMutex *m);
 // Calls the OS-specific deinitialization routine for the mutex.
 
 
+/*
+	Wrapper around the native operating system condition variable
+*/
+
+#ifdef _WIN32
+#include <windows.h>
+	typedef struct OSCondVar {
+		CONDITION_VARIABLE cv;
+	} OSCondVar;
+#else
+#include <pthread.h>
+	typedef struct OSCondVar {
+		pthread_cond_t cv;
+	} OSCondVar;
+#endif
+
+
+NONSTD_PLATFORM_API void os_condvar_wait(OSCondVar *cv, OSMutex *m);
+NONSTD_PLATFORM_API void os_condvar_broadcast(OSCondVar *cv);
+
+NONSTD_PLATFORM_API void os_condvar_init(OSCondVar *cv);
+NONSTD_PLATFORM_API void os_condvar_destroy(OSCondVar *cv);
+
 
 /*
 	"once barrier". useful if you need some initialization code to be called exactly once.
@@ -225,21 +248,52 @@ NONSTD_PLATFORM_API void event_reset(uint32_t *event);
 
 
 /*
-	Channel.
-    - Inspired by Go's unbuffered channels.
-    - Synchronizes two threads and passes a pointer from one to the other.
-Caution: Relies on barrier_wait, which still needs additional validation/auditing
-*/
+	Channel: a single-slot rendezvous channel with external shutdown.
+	(Inspired by go's channels)
+	
+	This is a *synchronizing* channel: channel_send() publishes one value into
+	a single slot and does not return success until some receiver consumes it.
+	
+	Shutdown semantics ("stop = drop"):
+	  - channel_shutdown() permanently transitions the channel to a stopped state.
+	  - After shutdown, channel_recv() will never deliver a value; it returns
+	    -1.
+	  - If shutdown races with an in-flight send/receive, an already-published
+	    value may be dropped so that all waiters can make progress.
+	
+	Return value contracts:
+	  channel_send(h, item):
+	    - Returns 0 iff some receiver consumed 'item' (rendezvous completed).
+	    - Returns -1 iff shutdown took effect before the rendezvous
+	      completed. In this case 'item' was not (and will not be) delivered
+	      (either it was never published, or it was published then retracted).
+	
+	  channel_recv(h, &out):
+	    - Returns 0 and stores a value in *out iff a value was consumed.
+	    - Returns -1 iff the channel is stopped (no value is delivered).
+	
+	Destruction:
+	  - channel_destroy() must be called only when no other threads are
+	    concurrently calling send/recv/shutdown and no thread is blocked inside
+	    those calls.
+ */
 
 typedef struct {
-	void *value;
-	uint32_t barrier;
-	OSMutex r_mtx;
-	OSMutex w_mtx;
+	OSMutex   m;
+	OSCondVar cv;
+        int       full;
+        int       stop;
+        uintptr_t item;
 } Channel;
 
-NONSTD_PLATFORM_API void *channel_receive(Channel *chan);
-NONSTD_PLATFORM_API void channel_send(Channel *chan, void *value);
+NONSTD_PLATFORM_API void channel_init(Channel *h);
+NONSTD_PLATFORM_API void channel_destroy(Channel *h);
+
+NONSTD_PLATFORM_API int channel_send(Channel *h, uintptr_t item);
+NONSTD_PLATFORM_API int channel_recv(Channel *h, uintptr_t *out);
+
+// Callable from any thread. Wakes everyone so they can notice stop and exit.
+NONSTD_PLATFORM_API void channel_shutdown(Channel *h);
 
 /*
 	Unfair blocking semaphore.
@@ -483,6 +537,57 @@ NONSTD_PLATFORM_API void os_mutex_unlock(OSMutex *m)
 
 
 
+
+#ifdef _WIN32
+NONSTD_PLATFORM_API void os_condvar_init(OSCondVar *cv)
+{
+	InitializeConditionVariable(&cv->cv);
+}
+
+NONSTD_PLATFORM_API void os_condvar_destroy(OSCondVar *cv)
+{ }
+
+NONSTD_PLATFORM_API void os_condvar_wait(OSCondVar *cv, OSMutex *m)
+{
+	SleepConditionVariableCS(&cv->cv, &m->m, INFINITE);
+}
+
+NONSTD_PLATFORM_API void os_condvar_broadcast(OSCondVar *cv)
+{
+	WakeAllConditionVariable(&cv->cv);
+}
+#else 
+NONSTD_PLATFORM_API void os_condvar_init(OSCondVar *cv)
+{
+	int rc = pthread_cond_init(&cv->cv, 0); 
+	ASSERT(rc==0); 
+}
+
+NONSTD_PLATFORM_API void os_condvar_destroy(OSCondVar *cv)
+{ 
+	int rc = pthread_cond_destroy(&cv->cv); 
+	ASSERT(rc==0); 
+}
+
+NONSTD_PLATFORM_API void os_condvar_wait(OSCondVar *cv, OSMutex *m)
+{
+	int rc = pthread_cond_wait(&cv->cv, &m->m); 
+	ASSERT(rc==0); 
+}
+
+NONSTD_PLATFORM_API void os_condvar_broadcast(OSCondVar *cv)
+{
+	int rc = pthread_cond_broadcast(&cv->cv); 
+	ASSERT(rc==0); 
+}
+#endif // cond var non-win32
+
+
+
+
+
+
+
 NONSTD_PLATFORM_API int 
 once_enter(int *b)
 {
@@ -680,48 +785,86 @@ event_reset(uint32_t *event)
 }
 
 
-
-NONSTD_PLATFORM_API void channel_send(Channel *chan, void *value)
+NONSTD_PLATFORM_API void channel_init(Channel *h)
 {
-	if(once_enter(&chan->r_mtx.init)) {
-		os_mutex_init(&chan->r_mtx);
-		os_mutex_init(&chan->w_mtx);
-		once_commit(&chan->r_mtx.init);
-	}
-
-	// wait in line for our turn to send
-	os_mutex_lock_(&chan->w_mtx);
-
-	// store the value, wait until we know it's received
-	chan->value = value;
-	barrier_wait(&chan->barrier, 2);
-	barrier_spin_wait(&chan->barrier, 2);
-
-	// let the next writer in
-	os_mutex_unlock_(&chan->w_mtx);
+	os_mutex_init(&h->m);
+	os_condvar_init(&h->cv);
+        h->full = 0;
+        h->stop = 0;
+        h->item = 0;
 }
 
-NONSTD_PLATFORM_API void *channel_receive(Channel *chan)
+NONSTD_PLATFORM_API void channel_destroy(Channel *h)
 {
-	if(once_enter(&chan->r_mtx.init)) {
-		os_mutex_init(&chan->r_mtx);
-		os_mutex_init(&chan->w_mtx);
-		once_commit(&chan->r_mtx.init);
-	}
-
-	// wait in line for our turn to receive
-	os_mutex_lock_(&chan->r_mtx);
-
-	// wait until we know there's a value, then retreive it
-	barrier_wait(&chan->barrier, 2);
-	void * value = chan->value;
-	barrier_spin_wait(&chan->barrier, 2);
-
-	// let the next reader in
-	os_mutex_unlock_(&chan->r_mtx);
-
-	return value;
+	os_mutex_destroy(&h->m);
+	os_condvar_destroy(&h->cv);
+        memset(h,0,sizeof(*h));
 }
+
+NONSTD_PLATFORM_API int channel_send(Channel *h, uintptr_t item)
+{
+	os_mutex_lock_(&h->m);
+
+        // Phase 1: wait until we are allowed to publish (slot empty).
+        while (!h->stop && h->full)
+		os_condvar_wait(&h->cv, &h->m);
+
+        if (h->stop) {
+		os_mutex_unlock_(&h->m);
+                return -1;
+        }
+
+        // Publish the item.
+        h->item = item;
+        h->full = 1;
+
+        // Wake a receiver.
+	os_condvar_broadcast(&h->cv);
+
+        // Phase 2 (the rendezvous): wait until a receiver actually consumes it.
+        while (h->full) {
+		os_condvar_wait(&h->cv, &h->m);
+                if(h->stop) {
+                        h->full = 0;
+                        h->item = 0;
+			os_condvar_broadcast(&h->cv);
+			os_mutex_unlock_(&h->m);
+                        return -1;
+                }
+        }
+
+	os_mutex_unlock_(&h->m);
+        return 0;
+}
+
+NONSTD_PLATFORM_API int channel_recv(Channel *h, uintptr_t *out)
+{
+	os_mutex_lock_(&h->m);
+        while (!h->stop && !h->full)
+		os_condvar_wait(&h->cv, &h->m);
+
+        if (h->stop) {
+		os_mutex_unlock_(&h->m);
+                return -1;
+        }
+        ASSERT(h->full);
+
+        *out = h->item;
+        h->item = 0;
+        h->full = 0;
+	os_condvar_broadcast(&h->cv);
+	os_mutex_unlock_(&h->m);
+        return 0;
+}
+
+NONSTD_PLATFORM_API void channel_shutdown(Channel *h)
+{
+	os_mutex_lock_(&h->m);
+        h->stop = 1;
+	os_condvar_broadcast(&h->cv);
+	os_mutex_unlock_(&h->m);
+}
+
 
 
 
