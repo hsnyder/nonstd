@@ -235,31 +235,14 @@ partition64 (i64 N, i64 P, i64 i)
 /* 
    ============================================================================
 		RANDOM NUMBERS
+	PCG32: permuted congruential generator
    ============================================================================
 */
-NONSTD_API uint32_t rand_pcg32 (uint64_t state[1]); 
-// Generate a random uint32, uniform distribution. 
-// Permuted congruential generator (32-bit)
-									       
-NONSTD_API double randu_pcg32 (uint64_t state[1]);
-static float randuf_pcg32 (uint64_t state[1]) {return randu_pcg32(state);}
-// Generate a random double/float, uniform distribution [0,1]. 
-// Permuted congruential generator (32-bit)
 
-#if !defined(NONSTD_NO_MATH_H)
-
-NONSTD_API double randn_pcg32 (uint64_t state[1]);
-static float randnf_pcg32 (uint64_t state[1]) {return randn_pcg32(state);}
-// Generate a random double/float, normal distribution. 
-// Permuted congruential generator (32-bit)
-
-NONSTD_API double randp_pcg32 (uint64_t state[1], double lambda);
-static float randpf_pcg32 (uint64_t state[1], float lambda) {return randp_pcg32(state, lambda);}
-// Generate a random double, poisson distribution. 
-// Permuted congruential generator (32-bit)
-
-#endif
-
+NONSTD_API uint64_t seed_rng (uint64_t seed);      // seed rng state
+NONSTD_API uint32_t rand_u32 (uint64_t state[1]);  // random 32 bit value
+NONSTD_API float    rand_f32 (uint64_t state[1]);  // uniform real in [0,1)
+NONSTD_API double   rand_f64 (uint64_t state[1]);  // uniform real in [0,1)
 
 /* 
    ============================================================================
@@ -286,7 +269,7 @@ int main(void)
 {
 	float n[10];
 	u64 state = time(NULL);
-	for(int i = 0; i < 10; i++) n[i] = randn_pcg32(&state);
+	for(int i = 0; i < 10; i++) n[i] = rand_f32(&state);
 
 	for(int i = 0; i < 10; i++) printf("%f\n",n[i]);
 	printf("\n\n");
@@ -952,52 +935,46 @@ hash_u64(uint64_t x)
 }
 
 NONSTD_API uint32_t 
-rand_pcg32 (uint64_t state[1])
+rand_u32(uint64_t *state)
 {
-	// Pseudorandom number generator - (simplified) Permuted Congruential Generator
-	uint64_t m = 0x9b60933458e17d7d; // prime
-	uint64_t a = 0xd737232eeccdf7ed; // prime
-	state[0] = state[0] * m + a;
-	int shift = 29 - (state[0] >> 61);
-	return state[0] >> shift;
+        uint64_t oldstate = *state;
+
+	const uint64_t mul = 6364136223846793005ull;
+	const uint64_t inc = 1442695040888963407ull;
+        *state = oldstate * mul + inc;
+
+	uint32_t xorshifted = (uint32_t)(((oldstate >> 18u) ^ oldstate) >> 27u);
+	uint32_t rot = (uint32_t)(oldstate >> 59u);
+	return (xorshifted >> rot) | (xorshifted << ((32u - rot) & 31u));
+}
+
+NONSTD_API uint64_t 
+seed_rng(uint64_t seed)
+{
+	uint64_t rng = 0;
+        rand_u32(&rng);
+        rng += seed;
+        rand_u32(&rng);
+        return rng;
+}
+
+NONSTD_API float
+rand_f32(uint64_t state[1])
+{
+	uint32_t u = rand_u32(state);
+	return (float)(u >> 8) * 0x1.0p-24f;
 }
 
 NONSTD_API double 
-randu_pcg32 (uint64_t state[1])
+rand_f64(uint64_t state[1])
 {
-	return rand_pcg32(state)/((double)UINT32_MAX);
+	uint32_t a = rand_u32(state);
+	uint32_t b = rand_u32(state);
+
+	uint64_t r = ((uint64_t)a << 32ull) | b;
+	return (double)(r >> 11) * 0x1.0p-53;
 }
 
-#if !defined(NONSTD_NO_MATH_H)
-#include <math.h>
-NONSTD_API double 
-randn_pcg32 (uint64_t state[1])
-{
-	// standard normal distributed random double generator
-	//const float pi = 0x1.921fb6p+1;
-	const double pi = 0x1.921fb54442d18p+1;
-	const double u32max = (double)UINT32_MAX;
-	double u1 = rand_pcg32(state);
-	double u2 = rand_pcg32(state);
-	return sqrt(-2.0*logf(u1/u32max)) * cos(2.0*pi*(u2/u32max));
-}
-
-NONSTD_API double 
-randp_pcg32 (uint64_t state[1], double lambda)
-{
-	const double u32max = (double)UINT32_MAX;
-	// poisson distribution random double generator
-	// slow for large lambda
-	int k = 0; 
-	double p = 1;
-	double L = exp(-lambda);
-	do {
-		k++;
-		p *= rand_pcg32(state)/u32max;
-	} while (p > L);
-	return --k;
-}
-#endif
 
 NONSTD_API int
 bubblesort_step (BubbleSort *state, int N)
@@ -1031,9 +1008,7 @@ shuffle_step(FisherYatesShuffle *state, int N)
 
 	if(state->priv2 == 0 && state->rng_ctx == 0) {
 		// seed the rng if the user provided literally nothing
-		rand_pcg32(&state->priv2);
-		state->priv2 += 0xdeadbeefULL;
-		rand_pcg32(&state->priv2);
+		state->priv2 = seed_rng(0xdeadbeef);
 	}
 
 	int i = state->priv - 1;
@@ -1045,10 +1020,9 @@ shuffle_step(FisherYatesShuffle *state, int N)
 
 	double u = state->rng_fn ? 
 		state->rng_fn(rng_ctx) : 
-		randu_pcg32((uint64_t*)rng_ctx);
+		rand_uniform((uint64_t*)rng_ctx);
 
         int64_t j = (int64_t)(u * (double)(i+1)); // floor via cast
-        if (j > i) j = i;                         // handles u==1.0
 
 	state->a = i;
 	state->b = j;
