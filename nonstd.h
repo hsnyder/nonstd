@@ -18,13 +18,6 @@
 		#define NONSTD_IMPLEMENTATION
 		#include "nonstd.h"
 
-	
-	A few functions use math.h, but on some platforms (e.g. Linux), this
-	forces you to link with libm even if you aren't using those functions.
-	If you define NONSTD_NO_MATH_H, functions relying on math.h will be
-	compiled out.
-
-
 */
 
 #ifndef NONSTD_H
@@ -295,6 +288,10 @@ int main(void)
 typedef struct FisherYatesShuffle {
 	void *rng_ctx; // optional: set this ahead of time to seed the random state
 	double (*rng_fn) (void*); // optional: rng callback
+				  // if you don't provide this, the rand_ functions 
+				  // from above are used, and the rng_ctx should be
+				  // a u64 rng state.
+
 	// zero-initialize the rest of this struct before the first shuffle_step call
 
 	// after every call, caller should swap elements at positions a and b
