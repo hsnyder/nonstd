@@ -223,7 +223,59 @@ partition64 (i64 N, i64 P, i64 i)
 	return (r == 0 || i < r)  ?  m  :  m-1;
 }
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
 
+// most significant set bit
+static inline int msb32(uint32_t x)
+{
+	if (x == 0)
+		return -1;
+
+	#if defined(_MSC_VER) && !defined(__clang__)
+	// MSVC code path
+	unsigned long index;
+	_BitScanReverse64(&index, x);
+	return (int)index;
+
+	#elif defined(__GNUC__) || defined(__clang__)
+	// GCC and clang code path
+	return 31 - __builtin_clz(x);
+
+	#else
+	// portable fallback 
+	int i = 0;
+	while (x >>= 1)
+		i++;
+	return i;
+	#endif
+}
+
+// most significant set bit
+static inline int msb64(uint64_t x)
+{
+	if (x == 0)
+		return -1;
+
+	#if defined(_MSC_VER) && !defined(__clang__)
+	// MSVC code path
+	unsigned long index;
+	_BitScanReverse(&index, x);
+	return (int)index;
+
+	#elif defined(__GNUC__) || defined(__clang__)
+	// GCC and clang code path
+	return 63 - __builtin_clzll(x);
+
+	#else
+	// portable fallback 
+	int i = 0;
+	while (x >>= 1)
+		i++;
+	return i;
+	#endif
+}
 
 /* 
    ============================================================================
@@ -1017,7 +1069,7 @@ shuffle_step(FisherYatesShuffle *state, int N)
 
 	double u = state->rng_fn ? 
 		state->rng_fn(rng_ctx) : 
-		rand_uniform((uint64_t*)rng_ctx);
+		rand_f64((uint64_t*)rng_ctx);
 
         int64_t j = (int64_t)(u * (double)(i+1)); // floor via cast
 
